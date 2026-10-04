@@ -221,13 +221,15 @@ npm run verify    # all of the above
 
 `TM1_CUBE` in the example environment is descriptive; the actual cube selection is in `TM1_MDX`. Authentication depends on the IBM hosting/security mode. CAM/SSO installations need an appropriate service identity/gateway extension; a generic API key is not assumed to work on every TM1 installation.
 
-### Enable OpenRouter GPT-6 Sol later
+### OpenRouter GPT-6 Sol
+
+The hosted production application has both cloud providers enabled. Open **Finance copilot**, enter your private presenter access code and ask a question. OpenRouter is selected automatically when its key is configured; Ollama Cloud is available in the provider menu. The code and provider keys are stored only in Vercel production secrets and are not included in this repository.
 
 In **Vercel → talentplan-tm1 → Settings → Environment Variables**, add `OPENROUTER_API_KEY` and a private `COPILOT_ACCESS_TOKEN`, then redeploy. The model is already configured as `openai/gpt-6-sol`. In the dashboard select OpenRouter and enter the presenter token. Tokens are held in memory for that component only, not in browser storage. Provider keys are never sent to the browser.
 
 OpenRouter's model catalogue was checked on 4 October 2026. The requested name “GPT-6 Tera” was not listed; **GPT-6 Sol was selected with the project owner's confirmation**. The model ID remains configurable. Requests go to `https://openrouter.ai/api/v1/chat/completions` with calculated evidence and high reasoning effort.
 
-### Enable Ollama Cloud later
+### Ollama Cloud
 
 Add `OLLAMA_API_KEY`, optionally change `OLLAMA_MODEL`, set the same presenter access token and redeploy. Requests use the direct `https://ollama.com/api/chat` endpoint with bearer authentication. A local Ollama server is not required.
 

@@ -1172,7 +1172,11 @@ function Copilot({ data }: { data: DashboardData }) {
   useEffect(() => {
     fetch('/api/copilot')
       .then(jsonResponse)
-      .then(setConfig)
+      .then((configuration) => {
+        setConfig(configuration);
+        if (configuration.openrouter.configured) setProvider('openrouter');
+        else if (configuration.ollama.configured) setProvider('ollama');
+      })
       .catch(() => {});
   }, []);
   async function ask(prompt = question) {
@@ -1225,7 +1229,7 @@ function Copilot({ data }: { data: DashboardData }) {
         {provider !== 'built-in' &&
           config?.[provider as 'openrouter' | 'ollama'].configured && (
             <div className="token-field">
-              <label htmlFor="presenter-token">Presenter access token</label>
+              <label htmlFor="presenter-token">Presenter access code</label>
               <input
                 id="presenter-token"
                 type="password"

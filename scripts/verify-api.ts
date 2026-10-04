@@ -47,11 +47,31 @@ const ai = await fetch(`${base}/api/copilot`, {
   headers: postHeaders,
   body: JSON.stringify({
     question: 'Why is EBITDA below budget?',
-    provider: 'openrouter',
+    provider: 'built-in',
   }),
 }).then((r) => r.json());
 assert.equal(ai.mode, 'calculated');
-assert.match(ai.notice, /not configured/);
+assert.match(ai.notice, /no language model used/);
+const providerConfig = await fetch(`${base}/api/copilot`).then((r) => r.json());
+for (const provider of ['openrouter', 'ollama'] as const) {
+  const response = await fetch(`${base}/api/copilot`, {
+    method: 'POST',
+    headers: postHeaders,
+    body: JSON.stringify({
+      question: 'Why is EBITDA below budget?',
+      provider,
+      accessToken: 'invalid-verification-code',
+    }),
+  });
+  if (providerConfig[provider].configured) {
+    assert.equal(response.status, 403);
+  } else {
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.mode, 'calculated');
+    assert.match(result.notice, /not configured/);
+  }
+}
 const saved = await fetch(`${base}/api/scenarios`, {
   method: 'POST',
   headers: postHeaders,
