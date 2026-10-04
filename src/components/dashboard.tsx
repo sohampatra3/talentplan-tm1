@@ -12,6 +12,7 @@ import {
   Menu,
   Moon,
   Network,
+  Palette,
   RefreshCw,
   Send,
   SlidersHorizontal,
@@ -29,6 +30,11 @@ import { ACCOUNTS, VERSIONS } from '@/lib/types';
 import { scenario } from '@/lib/finance';
 import type { AnalysisOptions } from '@/lib/analysis';
 import type { Language } from '@/lib/i18n';
+import {
+  APPEARANCE_STORAGE_KEY,
+  type ColorMode,
+  type ThemePalette,
+} from '@/lib/appearance';
 import { LocaleContext, useLocale } from './locale';
 import {
   Chart,
@@ -42,6 +48,7 @@ import {
   type ChartKind,
 } from './ui';
 import { Connections } from './connections';
+import { AppearanceSettings } from './appearance-settings';
 import { VisualWorkspace } from './visual-workspace';
 type View =
   | 'overview'
@@ -1110,11 +1117,15 @@ function Workspace({
   setLanguage,
   theme,
   setTheme,
+  palette,
+  setPalette,
 }: {
   language: Language;
   setLanguage: (l: Language) => void;
-  theme: 'light' | 'dark';
-  setTheme: (t: 'light' | 'dark') => void;
+  theme: ColorMode;
+  setTheme: (t: ColorMode) => void;
+  palette: ThemePalette;
+  setPalette: (palette: ThemePalette) => void;
 }) {
   const { t, num } = useLocale(),
     [view, setView] = useState<View>('overview'),
@@ -1255,6 +1266,14 @@ function Workspace({
               </button>
             </div>
             <button
+              className="icon-button"
+              aria-label={t('appearance')}
+              title={t('appearance')}
+              onClick={() => navigate('connections')}
+            >
+              <Palette size={21} />
+            </button>
+            <button
               className="icon-button theme-toggle"
               aria-label={t(theme === 'light' ? 'dark' : 'light')}
               title={t(theme === 'light' ? 'dark' : 'light')}
@@ -1314,6 +1333,14 @@ function Workspace({
               </div>
             </div>
           </div>
+          {view === 'connections' && (
+            <AppearanceSettings
+              mode={theme}
+              palette={palette}
+              setMode={setTheme}
+              setPalette={setPalette}
+            />
+          )}
           <div className="filter-panel">
             <Scope filters={filters} onChange={setFilters} />
             <button
@@ -1435,29 +1462,36 @@ function Workspace({
 }
 export default function Dashboard() {
   const [language, setLanguage] = useState<Language>('en'),
-    [theme, setTheme] = useState<'light' | 'dark'>('light'),
+    [theme, setTheme] = useState<ColorMode>('light'),
+    [palette, setPalette] = useState<ThemePalette>('sage'),
     [ready, setReady] = useState(false);
   useEffect(() => {
     try {
       const lang = localStorage.getItem('talentplan-language');
       if (lang === 'de' || lang === 'en') setLanguage(lang);
-      const saved = localStorage.getItem('talentplan-theme');
-      if (saved === 'dark' || saved === 'light') setTheme(saved);
-      else if (window.matchMedia('(prefers-color-scheme: dark)').matches)
-        setTheme('dark');
+      const saved = JSON.parse(
+        localStorage.getItem(APPEARANCE_STORAGE_KEY) || 'null'
+      );
+      if (saved?.mode === 'dark' || saved?.mode === 'light')
+        setTheme(saved.mode);
+      if (saved?.palette === 'sage' || saved?.palette === 'glass')
+        setPalette(saved.palette);
     } catch {}
     setReady(true);
   }, []);
   useEffect(() => {
+    if (!ready) return;
     document.documentElement.lang = language;
     document.documentElement.dataset.theme = theme;
-    if (ready) {
-      try {
-        localStorage.setItem('talentplan-language', language);
-        localStorage.setItem('talentplan-theme', theme);
-      } catch {}
-    }
-  }, [language, theme, ready]);
+    document.documentElement.dataset.palette = palette;
+    try {
+      localStorage.setItem('talentplan-language', language);
+      localStorage.setItem(
+        APPEARANCE_STORAGE_KEY,
+        JSON.stringify({ mode: theme, palette })
+      );
+    } catch {}
+  }, [language, theme, palette, ready]);
   return (
     <LocaleContext.Provider value={language}>
       <Workspace
@@ -1465,6 +1499,8 @@ export default function Dashboard() {
         setLanguage={setLanguage}
         theme={theme}
         setTheme={setTheme}
+        palette={palette}
+        setPalette={setPalette}
       />
     </LocaleContext.Provider>
   );

@@ -1,6 +1,10 @@
 # TalentPlan user guide
 
-Open [TalentPlan](https://talentplan-tm1.vercel.app/). Choose **EN** or **DE** in the top bar and use the moon/sun control for your preferred theme. The workspace remembers these choices.
+Open [TalentPlan](https://talentplan-tm1.vercel.app/). The default is **light mode** with the **Sage** theme, regardless of your device's appearance. Choose **EN** or **DE** in the top bar and use the moon/sun control to change light/dark mode. The workspace remembers your explicit choices.
+
+## Personalize the appearance
+
+Select the **palette icon** in the top bar, or open **Connections → Appearance settings**. Choose **Sage** for soft green and golden accents or **Glass** for translucent, frosted surfaces in blue and lilac. Light/dark mode works with either theme. Changes apply immediately and are saved in this browser. Choose **Restore defaults** to return to light Sage.
 
 ## Choose your reporting scope
 

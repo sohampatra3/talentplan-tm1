@@ -8,19 +8,19 @@ The seed contains fictional data, not StepStone financial results or employee re
 
 ## What you can do
 
-| Workspace         | Controls and output                                                                                               |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Overview          | Revenue, EBITDA, margin and average FTE; annual trend; product mix; market drilldown                              |
-| Variance analysis | Budget or Forecast comparison; account selection; favourable EBITDA contribution                                  |
-| Workforce         | Department drilldown; personnel expense or average FTE; chart selection                                           |
-| Scenario lab      | Revenue, salary and additional FTE assumptions; calculated preview; saved alternatives in Neon                    |
-| TM1 explorer      | Version/account selectors; paginated, validated leaf facts                                                        |
-| Finance copilot   | Public chat through OpenRouter, Ollama Cloud or calculated analysis; written answer and optional visual workspace |
-| Visual analysis   | Separate chart builder with reporting filters, metric, grouping, version, chart type, data table and CSV download |
-| Connections       | Session-specific REST/MCP endpoints and credentials; REST data verification; MCP handshake and tool discovery     |
-| User guide        | Practical navigation and financial definitions                                                                    |
+| Workspace         | Controls and output                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Overview          | Revenue, EBITDA, margin and average FTE; annual trend; product mix; market drilldown                               |
+| Variance analysis | Budget or Forecast comparison; account selection; favourable EBITDA contribution                                   |
+| Workforce         | Department drilldown; personnel expense or average FTE; chart selection                                            |
+| Scenario lab      | Revenue, salary and additional FTE assumptions; calculated preview; saved alternatives in Neon                     |
+| TM1 explorer      | Version/account selectors; paginated, validated leaf facts                                                         |
+| Finance copilot   | Public chat through OpenRouter, Ollama Cloud or calculated analysis; written answer and optional visual workspace  |
+| Visual analysis   | Separate chart builder with reporting filters, metric, grouping, version, chart type, data table and CSV download  |
+| Connections       | Appearance settings; session-specific REST/MCP endpoints and credentials; REST verification and MCP tool discovery |
+| User guide        | Practical navigation and financial definitions                                                                     |
 
-The top controls switch **English/German** and **light/dark mode**. Language, currency formatting and theme preferences persist in the browser. A shared reporting scope selects year, month range, entity, department and Budget/Forecast comparison. Selected exports use that scope; **All data** exports every available source fact. Canonical cube coordinates in exports remain stable for reconciliation.
+The workspace opens in **light mode** with the **Sage** theme, independently of the device's color preference. The top controls switch **English/German** and **light/dark mode**. Use the palette icon or **Connections → Appearance settings** to choose Sage (green and golden accents) or Glass (frosted surfaces with blue and lilac tones). Both themes support light and dark mode. Choices apply immediately and persist in the browser; **Restore defaults** returns to light Sage. Previously automatic dark preferences are reset once with this update. A shared reporting scope selects year, month range, entity, department and Budget/Forecast comparison. Selected exports use that scope; **All data** exports every available source fact. Canonical cube coordinates in exports remain stable for reconciliation.
 
 ## Architecture
 

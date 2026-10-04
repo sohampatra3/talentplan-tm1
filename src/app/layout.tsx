@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { appearanceInitScript } from '@/lib/appearance';
 export const metadata: Metadata = {
   title: 'TalentPlan · Finance, in focus',
   description:
@@ -8,7 +9,15 @@ export const metadata: Metadata = {
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      data-theme="light"
+      data-palette="sage"
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: appearanceInitScript }} />
+      </head>
       <body>{children}</body>
     </html>
   );

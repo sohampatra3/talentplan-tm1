@@ -18,7 +18,13 @@ import {
 } from 'recharts';
 import { useLocale } from './locale';
 import { ENTITIES, DEPARTMENTS, type Filters } from '@/lib/types';
-export const palette = ['#267158', '#719a82', '#c59b61', '#8ba7bd', '#ae83a0'];
+export const palette = [
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+];
 export type ChartKind = 'area' | 'line' | 'bar' | 'pie';
 export type ChartRow = {
   name: string;

@@ -64,6 +64,28 @@ export const messages: Record<string, readonly [string, string]> = {
   language: ['Language', 'Sprache'],
   dark: ['Dark mode', 'Dunkler Modus'],
   light: ['Light mode', 'Heller Modus'],
+  appearance: ['Appearance settings', 'Darstellungseinstellungen'],
+  appearanceSub: [
+    'A comfortable view for your workspace.',
+    'Eine angenehme Ansicht für Ihren Arbeitsbereich.',
+  ],
+  colorMode: ['Color mode', 'Farbmodus'],
+  visualTheme: ['Theme', 'Design'],
+  themesage: ['Sage', 'Salbei'],
+  themesageSub: [
+    'Soft green tones with warm golden accents.',
+    'Sanfte Grüntöne mit warmen goldenen Akzenten.',
+  ],
+  themeglass: ['Glass', 'Glas'],
+  themeglassSub: [
+    'Frosted surfaces with cool blue and lilac tones.',
+    'Milchglasflächen mit kühlen Blau- und Fliedertönen.',
+  ],
+  appearanceReset: ['Restore defaults', 'Standard wiederherstellen'],
+  appearanceNote: [
+    'Light mode is the default. Your choices apply immediately and are remembered in this browser.',
+    'Der helle Modus ist der Standard. Ihre Auswahl wird sofort angewendet und in diesem Browser gespeichert.',
+  ],
   refresh: ['Refresh dashboard', 'Dashboard aktualisieren'],
   export: ['Export data', 'Daten exportieren'],
   selectedExcel: ['Selected scope · Excel', 'Auswahl · Excel'],
