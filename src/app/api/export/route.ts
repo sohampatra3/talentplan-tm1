@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'TalentPlan';
     workbook.created = new Date();
+    const dashboard = buildDashboard(dataset, filters);
     const info = workbook.addWorksheet('Read me');
     info.columns = [{ width: 32 }, { width: 100 }];
     info.addRows([
@@ -47,22 +48,35 @@ export async function GET(request: NextRequest) {
       ['Exported rows', facts.length],
       [
         'Reporting currency',
-        'EUR; illustrative GBP/EUR conversion is embedded in demo costs',
+        dataset.status.mode === 'demonstration'
+          ? 'EUR; illustrative GBP/EUR conversion is embedded in demo costs'
+          : 'EUR; conversion must be supplied by the configured TM1 view',
       ],
       [
         'Actual cutover',
-        'Synthetic Actuals end September 2026. No future actuals.',
+        dataset.status.mode === 'demonstration'
+          ? 'Synthetic Actuals end September 2026. No future actuals.'
+          : `Last returned Actual period in selected year: ${dashboard.coverage.lastActualPeriod || 'none'}`,
       ],
       [
-        'Synthetic disclosure',
-        'Fictional recruitment marketplace. No StepStone actuals or employee records.',
+        'Data disclosure',
+        dataset.status.mode === 'demonstration'
+          ? 'Fictional recruitment marketplace. No StepStone actuals or employee records.'
+          : 'Live data from the configured IBM cube. Validate the MDX scope and mapping with your model owner.',
       ],
       ['FTE aggregation', 'Average monthly FTE, never a sum across months.'],
       [
         'Cost convention',
         'Costs stored as positive values; EBITDA = revenue minus operating expenses.',
       ],
-      ['Forecast', 'Closed actual months plus forecast for remaining months.'],
+      [
+        'Forecast',
+        'Actual where available for a coordinate; otherwise its Forecast value. Budget is never an outlook substitute.',
+      ],
+      [
+        'Coverage',
+        `Partial Actual periods: ${dashboard.coverage.partialActualPeriods.join(', ') || 'none'}. Missing outlook periods: ${dashboard.coverage.missingOutlookPeriods.join(', ') || 'none'}. Coverage is relative to the returned scope.`,
+      ],
       [
         'Scope',
         request.nextUrl.searchParams.get('scope') === 'all'
@@ -74,7 +88,7 @@ export async function GET(request: NextRequest) {
     summary.columns = [{ width: 32 }, { width: 24 }, { width: 24 }];
     summary.addRow(['Selected dashboard slice', JSON.stringify(filters)]);
     summary.addRow(['Account', 'Actual EUR', 'Budget EUR']);
-    for (const v of buildDashboard(dataset, filters).variance)
+    for (const v of dashboard.variance)
       summary.addRow([v.account, v.actual, v.budget]);
     const sheet = workbook.addWorksheet('Finance facts');
     sheet.columns = factColumns.map((h, i) => ({

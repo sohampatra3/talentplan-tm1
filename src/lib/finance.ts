@@ -51,25 +51,53 @@ export function buildDashboard(
   const actual = summarize(facts, 'Actual'),
     budget = summarize(facts, 'Budget');
   const fullYear = selectFacts(dataset.facts, { ...filters, toMonth: 12 });
-  // Rolling forecast uses closed actual months, then open forecast months.
-  const actualPeriods = new Set(
-    fullYear.filter((f) => f.version === 'Actual').map((f) => f.period)
+  // Actual takes precedence only for the same leaf coordinate. A partial
+  // Actual month must not suppress the other entities/accounts' Forecasts.
+  const coordinate = (f: Fact) =>
+    JSON.stringify([f.period, f.entity, f.department, f.product, f.account]);
+  const actualCoordinates = new Set(
+    fullYear.filter((f) => f.version === 'Actual').map(coordinate)
   );
   const rolling = fullYear
     .filter(
-      (f) => f.version === (actualPeriods.has(f.period) ? 'Actual' : 'Forecast')
+      (f) =>
+        f.version === 'Actual' ||
+        (f.version === 'Forecast' && !actualCoordinates.has(coordinate(f)))
     )
     .map((f) => ({ ...f, version: 'Forecast' as const }));
   const forecast = summarize(rolling, 'Forecast');
+  const coverage: DashboardData['coverage'] = {
+    actualPeriods: [],
+    completeActualPeriods: [],
+    partialActualPeriods: [],
+    missingOutlookPeriods: [],
+    lastActualPeriod: null,
+  };
   const monthly = Array.from({ length: 12 }, (_, i) => {
-    const rows = fullYear.filter((f) => Number(f.period.slice(5)) === i + 1);
+    const period = `${filters.year}-${String(i + 1).padStart(2, '0')}`;
+    const rows = fullYear.filter((f) => f.period === period);
+    const outlookRows = rolling.filter((f) => f.period === period);
+    // Coverage is relative to the returned view, not proof that the MDX
+    // includes every leaf in the source cube. Budget supplies expected
+    // coordinates but never supplies substitute forecast amounts.
+    const expected = new Set(rows.map(coordinate));
+    const actual = new Set(
+      rows.filter((f) => f.version === 'Actual').map(coordinate)
+    );
+    const outlook = new Set(outlookRows.map(coordinate));
+    const hasActual = actual.size > 0;
+    if (hasActual) {
+      coverage.actualPeriods.push(period);
+      coverage.lastActualPeriod = period;
+      if (actual.size === expected.size)
+        coverage.completeActualPeriods.push(period);
+      else coverage.partialActualPeriods.push(period);
+    }
+    if (!expected.size || outlook.size < expected.size)
+      coverage.missingOutlookPeriods.push(period);
     const a = summarize(rows, 'Actual'),
       b = summarize(rows, 'Budget'),
-      r = summarize(
-        rolling.filter((f) => Number(f.period.slice(5)) === i + 1),
-        'Forecast'
-      );
-    const hasActual = rows.some((f) => f.version === 'Actual');
+      r = summarize(outlookRows, 'Forecast');
     return {
       month: new Date(2026, i, 1).toLocaleString('en', { month: 'short' }),
       actual: hasActual ? a.revenue : null,
@@ -139,6 +167,7 @@ export function buildDashboard(
     actual,
     budget,
     forecast,
+    coverage,
     monthly,
     products,
     entities,

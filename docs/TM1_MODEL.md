@@ -48,6 +48,26 @@ For the POC rule template, only numeric leaf calculations are included. Consolid
 
 This value is an illustrative example, not an actual database row or company figure. IDs only need to be unique within a source read. Financial amounts use positive income/expense conventions. Empty future Actuals should be excluded in the MDX; zero cannot be used as a substitute for an unclosed Actual month.
 
+## Rolling outlook and coverage contract
+
+The finance engine matches leaf coordinates by **Period × Entity × Department × Product × Account**, excluding Version. It uses an Actual value whenever that coordinate is returned; otherwise it uses the matching Forecast. A genuine zero Actual also takes precedence. Budget is a comparison and coverage reference, never a substitute outlook value. This prevents one entity's partial Actual load from suppressing another entity's Forecast for the same month.
+
+For example, if Germany Revenue Actual is 100 and Forecast is 120 while UK Revenue has only Forecast of 200, rolling revenue is **300**, not 100 or 320. Other accounts follow the same coordinate-level rule. The annual outlook uses all returned months for the selected year/entity scope, independently of the selected YTD cutoff.
+
+Dashboard responses expose the following `coverage` fields:
+
+| Field                   | Meaning                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
+| `actualPeriods`         | Months containing at least one returned Actual coordinate                                   |
+| `completeActualPeriods` | Months with Actual at every expected coordinate within the returned scope                   |
+| `partialActualPeriods`  | Months with Actual at some, but not all, expected returned coordinates                      |
+| `missingOutlookPeriods` | Months with no returned records, or an expected coordinate lacking both Actual and Forecast |
+| `lastActualPeriod`      | Latest returned Actual month, or `null`; this does not certify a completed financial close  |
+
+Expected coordinates are the union of Actual, Budget and Forecast coordinates returned for each month. The dashboard displays **Review data coverage** for partial Actual periods or an incomplete annual outlook; Excel exports record the same coverage information. Missing coordinates are not filled from Budget or fabricated. Totals and variances reflect available data, so investigate these warnings before treating the view as a complete plan or close.
+
+Completeness is **relative to the returned MDX scope**. An account, entity or department omitted from every version is invisible to this check. A valid single-month view can establish connectivity while still producing an incomplete annual outlook. Confirm the required scope, source close flags, uniqueness and financial control totals with the model owner; `completeActualPeriods` alone cannot prove that the entire source cube is complete or closed.
+
 ## TM1 REST read
 
 The adapter sends `POST /api/v1/ExecuteMDX`, expands Axes → Tuples → Members → Hierarchy → Dimension, and reads cell `Ordinal` and `Value`. One numeric column means ordinal _i_ maps directly to row tuple _i_. Rows must contain all six canonical dimensions. The temporary Cellset is cleaned up after reading.

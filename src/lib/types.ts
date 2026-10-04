@@ -64,6 +64,13 @@ export interface DashboardData {
   actual: Summary;
   budget: Summary;
   forecast: Summary;
+  coverage: {
+    actualPeriods: string[];
+    completeActualPeriods: string[];
+    partialActualPeriods: string[];
+    missingOutlookPeriods: string[];
+    lastActualPeriod: string | null;
+  };
   monthly: {
     month: string;
     actual: number | null;

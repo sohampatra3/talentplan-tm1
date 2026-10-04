@@ -4,7 +4,7 @@ import { generateSynthetic, LAST_CLOSED_PERIOD } from '../src/lib/synthetic';
 import { buildDashboard, scenario, summarize } from '../src/lib/finance';
 import { makeCsv, csvCell } from '../src/lib/export';
 import { parseCellset, Tm1Error } from '../src/lib/tm1';
-import type { SourceStatus } from '../src/lib/types';
+import type { Fact, SourceStatus } from '../src/lib/types';
 import { deterministicAnalysis } from '../src/lib/copilot';
 import { readTm1 } from '../src/lib/tm1';
 import { getDataset } from '../src/lib/data-source';
@@ -68,6 +68,59 @@ test('forecast uses closed actuals and only open forecast periods', () => {
   assert.deepEqual(d.forecast, summarize(rolling, 'Forecast'));
   assert.equal(d.monthly[9].actual, null);
   assert.ok(d.monthly[9].forecast > 0);
+  assert.equal(d.coverage.lastActualPeriod, '2026-09');
+  assert.equal(d.coverage.completeActualPeriods.length, 9);
+  assert.deepEqual(d.coverage.partialActualPeriods, []);
+  assert.deepEqual(d.coverage.missingOutlookPeriods, []);
+});
+test('partial Actual coverage retains Forecast for unmatched leaf coordinates', () => {
+  const row = (
+    id: string,
+    entity: string,
+    account: Fact['account'],
+    version: Fact['version'],
+    amount: number
+  ): Fact => ({
+    id,
+    period: '2026-01',
+    entity,
+    department: 'Commercial',
+    product: 'Job advertising',
+    account,
+    version,
+    amount,
+    unit: 'EUR',
+  });
+  const partial = [
+    row('de-actual', 'Germany', 'Revenue', 'Actual', 100),
+    row('de-forecast', 'Germany', 'Revenue', 'Forecast', 120),
+    row('de-personnel', 'Germany', 'Personnel', 'Forecast', 40),
+    row('uk-forecast', 'United Kingdom', 'Revenue', 'Forecast', 200),
+    row('de-budget', 'Germany', 'Revenue', 'Budget', 130),
+    row('uk-budget', 'United Kingdom', 'Revenue', 'Budget', 210),
+  ];
+  const d = buildDashboard({ facts: partial, status }, filters);
+  assert.equal(d.forecast.revenue, 300);
+  assert.equal(d.forecast.personnel, 40);
+  assert.equal(d.forecast.ebitda, 260);
+  assert.equal(d.monthly[0].forecast, 300);
+  assert.deepEqual(d.coverage.completeActualPeriods, []);
+  assert.deepEqual(d.coverage.partialActualPeriods, ['2026-01']);
+  assert.equal(d.coverage.missingOutlookPeriods.length, 11);
+  assert.ok(!d.coverage.missingOutlookPeriods.includes('2026-01'));
+});
+test('budget-only coordinates flag an incomplete outlook without fabricating values', () => {
+  const d = buildDashboard(
+    {
+      facts: facts.filter(
+        (f) => !(f.period === '2026-10' && f.version === 'Forecast')
+      ),
+      status,
+    },
+    filters
+  );
+  assert.equal(d.monthly[9].forecast, 0);
+  assert.deepEqual(d.coverage.missingOutlookPeriods, ['2026-10']);
 });
 test('entity filters are additive and annual historical actuals available', () => {
   const all = buildDashboard({ facts, status }, filters);

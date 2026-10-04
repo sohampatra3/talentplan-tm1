@@ -12,3 +12,4 @@ playwright-report/
 .DS_Store
 IMPLEMENTATION_PLAN.md
 COST_FEASIBILITY.md
+next-env.d.ts

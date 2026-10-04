@@ -9,10 +9,13 @@ export async function getDataset(): Promise<Dataset> {
     reason = '';
   try {
     const facts = await readTm1();
-    const databaseConnected = await getDb()
-      .query('SELECT 1')
-      .then(() => true)
-      .catch(() => false);
+    let databaseConnected = false;
+    try {
+      await getDb().query('SELECT 1');
+      databaseConnected = true;
+    } catch {
+      /* A Neon outage must not discard a successful TM1 read. */
+    }
     return {
       facts,
       status: {

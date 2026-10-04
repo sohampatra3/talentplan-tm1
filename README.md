@@ -45,7 +45,8 @@ flowchart TD
     AI --> OR[OpenRouter · GPT-6 Sol]
     AI --> OC[Ollama Cloud]
     API --> S[Neon · session-scoped scenarios]
-    GH[GitHub · main branch] --> V[Vercel automatic deployment]
+    CLI[Manual production deployment] --> V[Vercel deployment]
+    GH[GitHub · main branch] -.->|GitHub app approval pending| V
     V --> W
 ```
 
@@ -140,11 +141,17 @@ The database uses positive values for income and expenses. All monetary amounts 
 | Favourable revenue variance | Actual − Budget                                                                                             |
 | Favourable expense variance | Budget − Actual; lower expense is favourable                                                                |
 | FTE                         | Full-time-equivalent capacity, **averaged over months** and added across entities/departments               |
-| Rolling full-year forecast  | Closed Actual months + Forecast for open months, irrespective of selected YTD cutoff                        |
+| Rolling full-year forecast  | Actual at each available leaf coordinate; otherwise its matching Forecast, across the full year             |
 | Employer on-costs           | Employer costs above gross salary; synthetic Germany Actual 23.5%, Budget 22% in 2026                       |
-| Cutover                     | The final closed Actual period; later months cannot masquerade as Actual                                    |
+| Cutover in the demo         | September 2026 is the final closed Actual period; later months contain Forecast only                        |
 
 **Reconciliation:** the sum of individual favourable account variances equals Actual EBITDA minus Budget EBITDA. The database load audit reconciles the seeded record count before commit.
+
+The rolling outlook matches **Period × Entity × Department × Product × Account**. An Actual value replaces only the Forecast at that same leaf coordinate, including a genuine zero Actual. If Germany has Actuals for a month while the UK has Forecast only, both contribute to the outlook. Budget is never substituted for a missing Actual/Forecast value. The annual outlook uses the full returned year even when the KPI cutoff is an earlier month.
+
+The dashboard's **Review data coverage** warning identifies partial Actual periods and an incomplete annual outlook. Expected coordinates are the union of Actual, Budget and Forecast coordinates returned for each month in the selected year/entity scope. A month is partial when only some of those coordinates have Actual; it has missing outlook coverage when any expected coordinate has neither Actual nor Forecast, or when no records were returned for that month. The Excel workbook also records these warnings. Missing amounts are not invented, so an incomplete view can understate totals and should be resolved before presenting them as a full-year plan.
+
+Coverage is **relative to the returned MDX scope**, not proof that the source cube or financial close is complete. A view that omits an account from every version cannot reveal that omission. The displayed last returned Actual period is therefore evidence of available data, not confirmation that every entity and account is closed. Validate the MDX scope, close status and control totals with the model owner.
 
 Known business stories: Germany's Q3 paid-listing demand softens; employer subscriptions partially cushion revenue; engineering hires run ahead of plan; Germany employer on-costs rise; UK expenses carry an illustrative 2.5% FX uplift. All assumptions are synthetic and stated as such.
 
@@ -163,7 +170,7 @@ Additional FTE is assumed to apply for the entire selected period, with the base
 ## Dashboard walkthrough
 
 1. Open **Overview** and point out the source banner before presenting numbers.
-2. Select the reporting year, YTD cutoff and entity. The twelve-month chart provides annual context; KPIs use the selected YTD slice.
+2. Select the reporting year, YTD cutoff and entity. The twelve-month chart provides annual context; KPIs use the selected YTD slice. Resolve any **Review data coverage** warning before treating the figures as complete.
 3. Open **Variance analysis** to explain the EBITDA gap. Read expense favourability separately from numeric Actual − Budget.
 4. Open **Workforce** to connect average FTE and employer on-costs to personnel expense.
 5. In **Scenario lab**, change revenue, salary or FTE assumptions, name the scenario and save it. Refresh and return to show Neon persistence. Other browser sessions do not see your scenarios.
@@ -237,6 +244,8 @@ The cloud models receive the selected financial summary, not credentials or empl
 
 The adapter reads a single numeric column and leaf coordinate tuples containing `Period`, `Entity`, `Department`, `Product`, `Account` and `Version`. It validates supported entities, accounts, versions, units, periods and finite numeric values. Account names must match the typed contract. Null or incompatible values produce an explicit fallback. A 6.5-second timeout avoids leaving the dashboard waiting indefinitely; the temporary MDX cellset is cleaned up afterwards. Existing corporate cube names and dimensional layouts require a mapping adaptation; this is not a universal connector to arbitrary TM1 cubes.
 
+A successful read confirms connectivity and contract validity, not a complete reporting view. Include the required entities, accounts, actual periods and forecast horizon in your MDX; use the coverage warnings and source control totals to review the returned scope. [The model contract](docs/TM1_MODEL.md) documents coordinate precedence and the coverage metadata.
+
 ### TM1 developer evidence in the repository
 
 - [Model design and contract](docs/TM1_MODEL.md): dimensions, hierarchies, model grain and integration/governance decisions.
@@ -263,7 +272,11 @@ Write endpoints enforce same-origin requests. Saved-scenario limits: 20 per sess
 
 ## Deployment and repository
 
-The GitHub repository is linked to the Vercel project. Pushes to `main` deploy the application. GitHub Actions runs finance tests, type checking and a production build. Vercel and Neon are in Frankfurt; production/preview server settings contain the pooled database URL and session secret. This POC shares one synthetic database across production and preview. Use a separate Neon branch for future schema-changing development or real data.
+The application is live on Vercel from a **manual production deployment**, and the source code is stored in the GitHub repository linked above. Connecting that repository to Vercel is **pending GitHub app approval**. Pushes to `main` do not yet trigger Vercel deployments. GitHub Actions runs finance tests, type checking and a production build independently of that deployment connection.
+
+To enable future automatic deployments, approve or install the Vercel GitHub app for this repository, then open **Vercel → talentplan-tm1 → Settings → Git**, connect `sohampatra3/talentplan-tm1` and select `main` as the production branch. Once the connection is confirmed, pushes to `main` will deploy production and pull requests can create preview deployments. Until then, deploy reviewed changes manually with the command below.
+
+Vercel and Neon are in Frankfurt; production/preview server settings contain the pooled database URL and session secret. This POC shares one synthetic database across production and preview. Use a separate Neon branch for future schema-changing development or real data.
 
 ```bash
 vercel link --project talentplan-tm1 --scope YOUR_SCOPE
@@ -271,7 +284,7 @@ vercel link --project talentplan-tm1 --scope YOUR_SCOPE
 vercel --prod
 ```
 
-Do not commit `.env.local`, personal access tokens, TM1 passwords, provider keys or database URLs. Keep API credentials in Vercel settings. An optional CI workflow tests code; automatic deploys are handled by the Vercel Git integration rather than a long-lived deploy token in GitHub.
+Do not commit `.env.local`, personal access tokens, TM1 passwords, provider keys or database URLs. Keep API credentials in Vercel settings. The CI workflow tests code; after approval, automatic deployments will use the Vercel Git integration rather than a long-lived deploy token in GitHub.
 
 ## Alignment with the public StepStone role
 

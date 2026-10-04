@@ -353,9 +353,9 @@ function Overview({
           <RevenueChart data={data} />
           <div className="chart-footnote">
             <span>
-              Actuals end{' '}
-              {data.filters.year === 2026 ? 'September' : 'December'} · open
-              months use forecast
+              Last returned Actual period:{' '}
+              {data.coverage.lastActualPeriod || 'none'} · open coordinates use
+              forecast
             </span>
             <span>
               Reporting currency <strong>EUR</strong>
@@ -667,40 +667,80 @@ function Workforce({ data }: { data: DashboardData }) {
             </ResponsiveContainer>
           </div>
         </Panel>
-        <Panel
-          title="Planning assumptions"
-          subtitle="The synthetic business story"
-        >
-          <div className="story-list">
-            <div>
-              <span className="story-number">01</span>
-              <h3>Hiring ahead of plan</h3>
-              <p>
-                Germany’s engineering team expands ahead of budget during 2026.
-              </p>
+        {data.status.mode === 'demonstration' ? (
+          <Panel
+            title="Planning assumptions"
+            subtitle="The synthetic business story · 2026"
+          >
+            <div className="story-list">
+              <div>
+                <span className="story-number">01</span>
+                <h3>Hiring ahead of plan</h3>
+                <p>
+                  Germany’s engineering team expands ahead of budget during
+                  2026.
+                </p>
+              </div>
+              <div>
+                <span className="story-number">02</span>
+                <h3>Employer on-costs</h3>
+                <p>
+                  Germany actuals use a 23.5% employer cost rate, versus 22%
+                  planned.
+                </p>
+              </div>
+              <div>
+                <span className="story-number">03</span>
+                <h3>Currency sensitivity</h3>
+                <p>
+                  UK actual expenses include an illustrative 2.5% FX cost uplift
+                  in EUR.
+                </p>
+              </div>
             </div>
-            <div>
-              <span className="story-number">02</span>
-              <h3>Employer on-costs</h3>
-              <p>
-                Germany actuals use a 23.5% employer cost rate, versus 22%
-                planned.
-              </p>
+          </Panel>
+        ) : (
+          <Panel
+            title="Live workforce evidence"
+            subtitle="Read from your mapped TM1 view"
+          >
+            <div className="story-list">
+              <div>
+                <span className="story-number">01</span>
+                <h3>Trace the input</h3>
+                <p>
+                  Use the explorer to inspect FTE and Personnel by department
+                  and period.
+                </p>
+              </div>
+              <div>
+                <span className="story-number">02</span>
+                <h3>Check the assumptions</h3>
+                <p>
+                  Salary rates, employer on-costs and FX treatment depend on
+                  your corporate cube. Synthetic assumptions do not describe
+                  these live figures.
+                </p>
+              </div>
+              <div>
+                <span className="story-number">03</span>
+                <h3>Confirm coverage</h3>
+                <p>
+                  Period completeness is assessed within the returned MDX scope.
+                  Validate that scope with the model owner.
+                </p>
+              </div>
             </div>
-            <div>
-              <span className="story-number">03</span>
-              <h3>Currency sensitivity</h3>
-              <p>
-                UK actual expenses include an illustrative 2.5% FX cost uplift
-                in EUR.
-              </p>
-            </div>
-          </div>
-        </Panel>
+          </Panel>
+        )}
       </div>
       <Panel
         title="Department cost view"
-        subtitle="FTE averaged over selected months. Salary costs include employer on-costs."
+        subtitle={
+          data.status.mode === 'demonstration'
+            ? 'FTE averaged over selected months. Salary costs include employer on-costs.'
+            : 'Average returned monthly FTE. Personnel expense follows your TM1 account mapping.'
+        }
       >
         <div className="table-scroll">
           <table>
@@ -1896,6 +1936,26 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className={`view-content ${loading ? 'refreshing' : ''}`}>
+              {data.coverage &&
+                (data.coverage.partialActualPeriods.length > 0 ||
+                  data.coverage.missingOutlookPeriods.length > 0) && (
+                  <div className="source-banner">
+                    <Info size={18} />
+                    <div>
+                      <strong>Review data coverage</strong>
+                      <span>
+                        {data.coverage.partialActualPeriods.length > 0
+                          ? `Partial Actual periods: ${data.coverage.partialActualPeriods.join(', ')}. `
+                          : ''}
+                        {data.coverage.missingOutlookPeriods.length > 0
+                          ? `Incomplete annual outlook: ${data.coverage.missingOutlookPeriods.join(', ')}. `
+                          : ''}
+                        Figures use the returned cube scope. Forecast fills open
+                        coordinates; missing records are not assumed complete.
+                      </span>
+                    </div>
+                  </div>
+                )}
               {view === 'overview' && (
                 <Overview data={data} onView={navigate} />
               )}{' '}
