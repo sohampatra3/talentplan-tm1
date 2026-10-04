@@ -20,6 +20,7 @@ import { endpointUrl, publicAddress } from '../src/lib/outbound';
 import {
   deterministicAnalysis,
   providerConfiguration,
+  copilotEvidence,
 } from '../src/lib/copilot';
 import { messages, translate, formatMoney } from '../src/lib/i18n';
 import type { Dataset, Filters } from '../src/lib/types';
@@ -214,4 +215,13 @@ test('forecast visualisation reconciles to annual coordinate-level rolling outlo
     version: 'Outlook',
   });
   assert.deepEqual(analysis.coverage?.missingOutlookPeriods, []);
+});
+
+test('AI evidence preserves Forecast figures without ambiguous budget field names', () => {
+  const dashboard = buildDashboard(dataset, filters),
+    evidence = copilotEvidence(dashboard);
+  assert.equal(evidence.comparisonVersion, 'Forecast');
+  assert.deepEqual(evidence.comparison, dashboard.budget);
+  assert.equal(evidence.variance[0].comparison, dashboard.variance[0].budget);
+  assert.doesNotMatch(JSON.stringify(evidence), /budget/i);
 });

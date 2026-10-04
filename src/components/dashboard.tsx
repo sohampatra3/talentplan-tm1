@@ -916,11 +916,11 @@ function Copilot({
                 { value: 'built-in', label: t('calculated') },
                 {
                   value: 'openrouter',
-                  label: `OpenRouter${config?.openrouter.configured ? '' : ` · ${t('keyPending')}`}`,
+                  label: `OpenRouter${config && !config.openrouter.configured ? ` · ${t('keyPending')}` : ''}`,
                 },
                 {
                   value: 'ollama',
-                  label: `Ollama Cloud${config?.ollama.configured ? '' : ` · ${t('keyPending')}`}`,
+                  label: `Ollama Cloud${config && !config.ollama.configured ? ` · ${t('keyPending')}` : ''}`,
                 },
               ]}
             />
