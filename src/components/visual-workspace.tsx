@@ -78,6 +78,7 @@ export function VisualWorkspace({
     setOptions((o) => ({
       ...o,
       metric,
+      version: metric === 'variance' ? 'Actual' : o.version,
       dimension:
         metric === 'variance'
           ? 'account'
