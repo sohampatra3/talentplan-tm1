@@ -8,13 +8,9 @@ import {
   providerConfiguration,
   askProvider,
 } from '@/lib/copilot';
-import {
-  sessionId,
-  attachSession,
-  sameOrigin,
-  equalSecret,
-} from '@/lib/security';
+import { sessionId, attachSession, sameOrigin } from '@/lib/security';
 import { getDb } from '@/lib/db';
+import { visualIntent } from '@/lib/analysis';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 export async function GET() {
@@ -25,7 +21,16 @@ export async function GET() {
 const inputSchema = z.object({
   question: z.string().trim().min(3).max(1200),
   provider: z.enum(['built-in', 'openrouter', 'ollama']).default('built-in'),
-  accessToken: z.string().max(200).optional(),
+  language: z.enum(['en', 'de']).default('en'),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(['user', 'assistant']),
+        content: z.string().max(6000),
+      })
+    )
+    .max(6)
+    .default([]),
 });
 export async function POST(request: NextRequest) {
   try {
@@ -42,30 +47,25 @@ export async function POST(request: NextRequest) {
       { error: 'Ask a question between 3 and 1,200 characters.' },
       { status: 400 }
     );
+  const id = sessionId(request);
   let data;
   try {
-    data = buildDashboard(await getDataset(), parseFilters(request.url));
+    data = buildDashboard(await getDataset(id), parseFilters(request.url));
   } catch {
     return NextResponse.json(
       { error: 'Invalid finance filters.' },
       { status: 400 }
     );
   }
-  const { question, provider, accessToken } = input.data,
-    id = sessionId(request);
-  const fallback = deterministicAnalysis(data, question);
-  const respond = (
-    answer: string,
-    mode: string,
-    notice: string,
-    model: string
-  ) =>
+  const { question, provider, language, history } = input.data;
+  const fallback = deterministicAnalysis(data, question, language);
+  const respond = (answer: string, mode: string, notice: string) =>
     attachSession(
       NextResponse.json({
         answer,
         mode,
         notice,
-        model,
+        visualization: { ...visualIntent(question), filters: data.filters },
         source: data.status.source,
         checkedAt: data.status.checkedAt,
       }),
@@ -75,24 +75,14 @@ export async function POST(request: NextRequest) {
     return respond(
       fallback,
       'calculated',
-      'Calculated analysis · no language model used',
-      'Finance engine'
+      'Calculated analysis · no language model used'
     );
   const config = providerConfiguration()[provider];
   if (!config.configured)
     return respond(
       fallback,
       'calculated',
-      `${provider === 'openrouter' ? 'OpenRouter' : 'Ollama Cloud'} API key is not configured. Showing calculated analysis.`,
-      config.model
-    );
-  if (
-    !process.env.COPILOT_ACCESS_TOKEN ||
-    !equalSecret(accessToken || '', process.env.COPILOT_ACCESS_TOKEN)
-  )
-    return NextResponse.json(
-      { error: 'Enter the presenter access token to use cloud AI.' },
-      { status: 403 }
+      `${provider === 'openrouter' ? 'OpenRouter' : 'Ollama Cloud'} API key is not configured. Showing calculated analysis.`
     );
   try {
     const client = await getDb().connect();
@@ -123,19 +113,23 @@ export async function POST(request: NextRequest) {
     } finally {
       client.release();
     }
-    const answer = await askProvider(provider, question, data);
+    const answer = await askProvider(
+      provider,
+      question,
+      data,
+      language,
+      history
+    );
     return respond(
       answer,
       'ai',
-      `${provider === 'openrouter' ? 'OpenRouter' : 'Ollama Cloud'} · ${config.model}`,
-      config.model
+      provider === 'openrouter' ? 'OpenRouter' : 'Ollama Cloud'
     );
   } catch {
     return respond(
       fallback,
       'calculated',
-      'Cloud AI is unavailable or timed out. Showing calculated analysis.',
-      config.model
+      'Cloud AI is unavailable or timed out. Showing calculated analysis.'
     );
   }
 }

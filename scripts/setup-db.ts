@@ -10,6 +10,7 @@ try {
   const facts = generateSynthetic();
   await client.query('BEGIN');
   await client.query(await readFile('db/001_initial.sql', 'utf8'));
+  await client.query(await readFile('db/002_connections.sql', 'utf8'));
   await client.query(
     `INSERT INTO finance_fact (id, period, entity, department, product, account, version, amount, unit, dataset_version)
     SELECT x.id, x.period, x.entity, x.department, x.product, x.account, x.version, x.amount, x.unit, $2

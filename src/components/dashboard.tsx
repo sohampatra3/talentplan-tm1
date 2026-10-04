@@ -1,591 +1,388 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Activity,
-  ArrowDownToLine,
-  ArrowDownRight,
-  ArrowRight,
   ArrowUpRight,
   BarChart3,
   BookOpen,
-  Check,
   ChevronLeft,
   ChevronRight,
-  Cloud,
-  Database,
-  GitBranch,
-  Layers3,
+  Download,
   LayoutDashboard,
   Loader2,
   Menu,
+  Moon,
+  Network,
   RefreshCw,
   Send,
-  Settings2,
-  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Sun,
   Table2,
   Users,
-  X,
-  PlugZap,
-  Info,
-  TriangleAlert,
+  AlertTriangle,
+  CheckCircle2,
 } from 'lucide-react';
-import {
-  Area,
-  Bar,
-  CartesianGrid,
-  Cell,
-  ComposedChart,
-  Legend,
-  Line,
-  Pie,
-  PieChart,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-  BarChart,
-} from 'recharts';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import type { DashboardData, Fact, Filters } from '@/lib/types';
+import { ACCOUNTS, VERSIONS } from '@/lib/types';
 import { scenario } from '@/lib/finance';
+import type { AnalysisOptions } from '@/lib/analysis';
+import type { Language } from '@/lib/i18n';
+import { LocaleContext, useLocale } from './locale';
 import {
-  ACCOUNTS,
-  VERSIONS,
-  type DashboardData,
-  type Fact,
-  type Filters,
-} from '@/lib/types';
+  Chart,
+  ChartSelect,
+  Metric,
+  Panel,
+  Scope,
+  Select,
+  filterQuery,
+  readJson,
+  type ChartKind,
+} from './ui';
+import { Connections } from './connections';
+import { VisualWorkspace } from './visual-workspace';
 type View =
   | 'overview'
   | 'variance'
   | 'workforce'
-  | 'scenario'
+  | 'scenarios'
   | 'explorer'
   | 'copilot'
   | 'connections'
   | 'guide';
 const nav = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'variance', label: 'Variance analysis', icon: BarChart3 },
-  { id: 'workforce', label: 'Workforce', icon: Users },
-  { id: 'scenario', label: 'Scenario lab', icon: SlidersHorizontal },
-  { id: 'explorer', label: 'TM1 explorer', icon: Layers3 },
-  { id: 'copilot', label: 'Finance copilot', icon: Sparkles },
+  { id: 'overview', icon: LayoutDashboard },
+  { id: 'variance', icon: BarChart3 },
+  { id: 'workforce', icon: Users },
+  { id: 'scenarios', icon: SlidersHorizontal },
+  { id: 'explorer', icon: Table2 },
+  { id: 'copilot', icon: Sparkles },
+  { id: 'connections', icon: Network },
+  { id: 'guide', icon: BookOpen },
 ] as const;
-const titles: Record<View, [string, string]> = {
-  overview: [
-    'Finance, in focus.',
-    'A clear view of performance. A confident next decision.',
-  ],
-  variance: [
-    'Understand the difference.',
-    'Trace the movement from budget to actual performance.',
-  ],
-  workforce: [
-    'People behind the plan.',
-    'Connect workforce decisions to their financial impact.',
-  ],
-  scenario: [
-    'What if becomes what’s next.',
-    'Explore your assumptions before making a decision.',
-  ],
-  explorer: [
-    'Explore every dimension.',
-    'Slice the finance model and trace the numbers to their source.',
-  ],
-  copilot: [
-    'A second perspective.',
-    'Ask a finance question. Start with the numbers.',
-  ],
-  connections: [
-    'Connected by design.',
-    'One finance model. A dependable route to your data.',
-  ],
-  guide: [
-    'Built for the conversation.',
-    'A guided tour of planning, reporting and the TM1 connection.',
-  ],
+const defaults: Filters = {
+  year: 2026,
+  fromMonth: 1,
+  toMonth: 9,
+  entity: 'All entities',
+  department: 'All departments',
+  comparison: 'Budget',
 };
-const colors = ['#286b56', '#a7c7b1', '#e1b885'];
-const money = (value: number, compact = true) =>
-  new Intl.NumberFormat('en-GB', {
-    style: 'currency',
-    currency: 'EUR',
-    notation: compact ? 'compact' : 'standard',
-    maximumFractionDigits: compact ? 2 : 0,
-  }).format(value);
-const num = (v: number, d = 0) =>
-  new Intl.NumberFormat('en-GB', { maximumFractionDigits: d }).format(v);
-const monthName = (m: number) =>
-  new Date(2026, m - 1, 1).toLocaleString('en-GB', { month: 'short' });
-const deltaPercent = (a: number, b: number) =>
+const percent = (a: number, b: number) =>
   b ? ((a - b) / Math.abs(b)) * 100 : 0;
-const query = (f: Filters) =>
-  new URLSearchParams({
-    year: String(f.year),
-    toMonth: String(f.toMonth),
-    entity: f.entity,
-  }).toString();
-async function jsonResponse(res: Response) {
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
-  return data;
-}
-function Panel({
-  title,
-  subtitle,
-  action,
-  children,
-  className = '',
-}: {
-  title: string;
-  subtitle?: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={`panel ${className}`}>
-      <div className="panel-heading">
-        <div>
-          <h2>{title}</h2>
-          {subtitle && <p>{subtitle}</p>}
-        </div>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-function Metric({
-  label,
-  value,
-  change,
-  caption,
-  icon: Icon,
-  neutral = false,
-  changeUnit = '%',
-}: {
-  label: string;
-  value: string;
-  change: number;
-  caption: string;
-  icon: typeof Activity;
-  neutral?: boolean;
-  changeUnit?: string;
-}) {
-  return (
-    <div className="metric">
-      <div className="metric-top">
-        <span>{label}</span>
-        <Icon size={17} />
-      </div>
-      <div className="metric-value">{value}</div>
-      <div className="metric-bottom">
-        <span
-          className={
-            neutral
-              ? 'change neutral'
-              : change >= 0
-                ? 'change positive'
-                : 'change negative'
-          }
-        >
-          {change >= 0 ? (
-            <ArrowUpRight size={14} />
-          ) : (
-            <ArrowDownRight size={14} />
-          )}{' '}
-          {Math.abs(change).toFixed(1)}
-          {changeUnit}
-        </span>
-        <span>{caption}</span>
-      </div>
-    </div>
-  );
-}
-function Empty({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="empty">
-      <Info size={22} />
-      <p>{children}</p>
-    </div>
-  );
-}
-function RevenueChart({ data }: { data: DashboardData }) {
-  return (
-    <div className="chart-box">
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart
-          data={data.monthly}
-          margin={{ top: 12, right: 12, left: -15, bottom: 0 }}
-        >
-          <defs>
-            <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#286b56" stopOpacity={0.18} />
-              <stop offset="100%" stopColor="#286b56" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid stroke="#edf0ed" vertical={false} />
-          <XAxis
-            dataKey="month"
-            axisLine={false}
-            tickLine={false}
-            tick={{ fontSize: 11, fill: '#8a938c' }}
-            dy={10}
-          />
-          <YAxis
-            axisLine={false}
-            tickLine={false}
-            tickFormatter={(v) => `${v / 1000000}m`}
-            tick={{ fontSize: 11, fill: '#8a938c' }}
-          />
-          <Tooltip
-            contentStyle={{
-              borderRadius: 14,
-              border: '1px solid #e4e9e4',
-              fontSize: 12,
-            }}
-            formatter={(v) => money(Number(v))}
-          />
-          <ReferenceLine
-            x={monthName(data.filters.toMonth)}
-            stroke="#cad5cc"
-            strokeDasharray="4 4"
-          />
-          <Area
-            type="monotone"
-            dataKey="actual"
-            name="Actual revenue"
-            stroke="#286b56"
-            strokeWidth={2.8}
-            fill="url(#revenueGradient)"
-            connectNulls={false}
-          />
-          <Line
-            type="monotone"
-            dataKey="budget"
-            name="Budget"
-            stroke="#b8c1b8"
-            strokeWidth={1.8}
-            strokeDasharray="5 5"
-            dot={false}
-          />
-          <Line
-            type="monotone"
-            dataKey="forecast"
-            name="Rolling forecast"
-            stroke="#92aaa0"
-            strokeWidth={1.6}
-            strokeDasharray="2 5"
-            dot={false}
-          />
-        </ComposedChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
+type VisualRequest = Partial<AnalysisOptions> & { filters: Filters };
 function Overview({
   data,
-  onView,
+  setFilters,
+  openVisual,
 }: {
   data: DashboardData;
-  onView: (v: View) => void;
+  setFilters: (f: Filters) => void;
+  openVisual: (r: VisualRequest) => void;
 }) {
+  const { t, money, num } = useLocale(),
+    [metric, setMetric] = useState<'revenue' | 'ebitda' | 'fte'>('revenue'),
+    [chart, setChart] = useState<ChartKind>('area'),
+    [product, setProduct] = useState(''),
+    [mixKind, setMixKind] = useState<ChartKind>('pie');
+  const comparison = data.filters.comparison || 'Budget';
   const a = data.actual,
     b = data.budget;
+  const last = data.monthly.findLastIndex((row) => row.actual !== null);
+  const trend = data.monthly.map((row, i) => ({
+    name: `${data.filters.year}-${String(i + 1).padStart(2, '0')}`,
+    value:
+      metric === 'revenue'
+        ? row.actual
+        : metric === 'ebitda'
+          ? row.ebitda
+          : row.fte,
+    baseline:
+      metric === 'revenue'
+        ? row.budget
+        : metric === 'ebitda'
+          ? row.budgetEbitda
+          : row.budgetFte,
+    forecast:
+      i >= last
+        ? metric === 'revenue'
+          ? row.forecast
+          : metric === 'ebitda'
+            ? row.forecastEbitda
+            : row.forecastFte
+        : null,
+  }));
+  const products = data.products.filter((p) => p.value || p.budget);
+  const picked = products.find((p) => p.name === product);
   return (
     <>
       <div className="metrics">
         <Metric
-          label="Total revenue"
-          value={money(a.revenue)}
-          change={deltaPercent(a.revenue, b.revenue)}
-          caption="vs. budget"
-          icon={Activity}
+          label={t('revenue')}
+          value={a.revenue}
+          delta={percent(a.revenue, b.revenue)}
+          onClick={() =>
+            openVisual({
+              metric: 'revenue',
+              dimension: 'period',
+              filters: data.filters,
+            })
+          }
         />
         <Metric
-          label="EBITDA"
-          value={money(a.ebitda)}
-          change={deltaPercent(a.ebitda, b.ebitda)}
-          caption="vs. budget"
-          icon={BarChart3}
+          label={t('ebitda')}
+          value={a.ebitda}
+          delta={percent(a.ebitda, b.ebitda)}
+          onClick={() =>
+            openVisual({
+              metric: 'variance',
+              dimension: 'account',
+              filters: data.filters,
+            })
+          }
         />
         <Metric
-          label="EBITDA margin"
-          value={`${a.margin.toFixed(1)}%`}
-          change={a.margin - b.margin}
-          caption="vs. budget"
-          changeUnit=" pp"
-          icon={Layers3}
+          label={t('margin')}
+          value={a.margin}
+          unit="%"
+          onClick={() => setMetric('ebitda')}
         />
         <Metric
-          label="Average workforce"
-          value={`${num(a.fte, 1)}`}
-          change={deltaPercent(a.fte, b.fte)}
-          caption="FTE vs. budget"
-          icon={Users}
-          neutral
+          label={t('fte')}
+          value={a.fte}
+          unit="FTE"
+          delta={percent(a.fte, b.fte)}
+          onClick={() =>
+            openVisual({
+              metric: 'fte',
+              dimension: 'department',
+              filters: data.filters,
+            })
+          }
         />
       </div>
-      <div className="overview-grid">
+      <div className="two-columns wide-left">
         <Panel
-          title="Revenue performance"
-          subtitle={`${data.filters.year} · full-year outlook, EUR`}
-          action={
-            <div className="chart-legend">
-              <span>
-                <i className="dot green" />
-                Actual
-              </span>
-              <span>
-                <i className="dot grey" />
-                Budget
-              </span>
-              <span>
-                <i className="dot sage" />
-                Forecast
-              </span>
+          title={t('trend')}
+          subtitle={t('trendSub')}
+          actions={
+            <div className="chart-controls">
+              <Select
+                label={t('metric')}
+                value={metric}
+                onChange={(v) => setMetric(v as typeof metric)}
+                options={['revenue', 'ebitda', 'fte'].map((value) => ({
+                  value,
+                  label: t(value),
+                }))}
+              />
+              <ChartSelect value={chart} onChange={setChart} allowPie={false} />
             </div>
           }
         >
-          <RevenueChart data={data} />
-          <div className="chart-footnote">
-            <span>
-              Last returned Actual period:{' '}
-              {data.coverage.lastActualPeriod || 'none'} · open coordinates use
-              forecast
-            </span>
-            <span>
-              Reporting currency <strong>EUR</strong>
-            </span>
-          </div>
-        </Panel>
-        <Panel title="Revenue mix" subtitle="Where our performance comes from">
-          <div className="donut-wrap">
-            <ResponsiveContainer width="100%" height={190}>
-              <PieChart>
-                <Pie
-                  data={data.products}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={66}
-                  outerRadius={88}
-                  paddingAngle={4}
-                  stroke="none"
-                >
-                  {data.products.map((p, i) => (
-                    <Cell key={p.name} fill={colors[i]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(v) => money(Number(v))}
-                  contentStyle={{ borderRadius: 12, fontSize: 12 }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="donut-center">
-              <span>Revenue</span>
-              <strong>{money(a.revenue)}</strong>
-            </div>
-          </div>
-          <div className="mix-list">
-            {data.products.map((p, i) => (
-              <div key={p.name}>
-                <span>
-                  <i style={{ background: colors[i] }} className="dot" />
-                  {p.name}
-                </span>
-                <strong>
-                  {a.revenue ? ((p.value / a.revenue) * 100).toFixed(1) : '0'}%
-                </strong>
-              </div>
-            ))}
-          </div>
-        </Panel>
-      </div>
-      <div className="bottom-grid">
-        <Panel
-          title="Market performance"
-          subtitle="An international view of the plan"
-          action={
-            <button className="text-button" onClick={() => onView('variance')}>
-              View analysis <ArrowRight size={14} />
-            </button>
-          }
-        >
-          <div className="market-list">
-            {data.entities.map((e, i) => (
-              <div className="market-row" key={e.name}>
-                <div className="flag">{e.name === 'Germany' ? '🇩🇪' : '🇬🇧'}</div>
-                <div className="market-name">
-                  <strong>{e.name}</strong>
-                  <span>{num(e.fte, 1)} average FTE</span>
-                </div>
-                <div className="market-revenue">
-                  <strong>{money(e.actual)}</strong>
-                  <span>Revenue</span>
-                </div>
-                <div className="market-bar">
-                  <span
-                    style={{
-                      width: `${Math.min(100, (e.actual / e.budget) * 100)}%`,
-                      background: colors[i],
-                    }}
-                  />
-                </div>
-                <span
-                  className={e.actual >= e.budget ? 'positive' : 'negative'}
-                >
-                  {deltaPercent(e.actual, e.budget).toFixed(1)}%
-                </span>
-              </div>
-            ))}
-          </div>
-        </Panel>
-        <div className="insight-card">
-          <div className="insight-label">
-            <Sparkles size={17} />
-            <span>PLANNING PERSPECTIVE</span>
-          </div>
-          <h2>
-            See the story
-            <br />
-            behind the numbers.
-          </h2>
-          <p>
-            Understand the EBITDA gap, explore hiring decisions, and make your
-            next planning conversation count.
+          <Chart
+            rows={trend}
+            kind={chart}
+            unit={metric === 'fte' ? 'FTE' : 'EUR'}
+            comparison={comparison}
+          />
+          <p className="note">
+            {t('lastActual')}: {data.coverage.lastActualPeriod || '—'} · EUR
           </p>
-          <button onClick={() => onView('copilot')}>
-            Ask the finance copilot <ArrowUpRight size={16} />
-          </button>
-          <div className="insight-decoration" aria-hidden="true">
-            <span />
-            <span />
-            <span />
+        </Panel>
+        <Panel
+          title={t('mix')}
+          subtitle={t('mixSub')}
+          actions={<ChartSelect value={mixKind} onChange={setMixKind} />}
+        >
+          <Chart
+            rows={products.map((p) => ({
+              name: p.name,
+              value: p.value,
+              baseline: p.budget,
+            }))}
+            kind={mixKind}
+            comparison={comparison}
+            onPick={setProduct}
+          />
+          <div className="product-list">
+            {products.map((p) => (
+              <button
+                key={p.name}
+                className={product === p.name ? 'active' : ''}
+                onClick={() => setProduct(product === p.name ? '' : p.name)}
+              >
+                <span>{t(p.name)}</span>
+                <strong>
+                  {num(a.revenue ? (p.value / a.revenue) * 100 : 0, 1)}%
+                </strong>
+              </button>
+            ))}
           </div>
-        </div>
+          {picked && (
+            <div className="selection-detail">
+              <strong>{t(picked.name)}</strong>
+              <span>
+                {money(picked.value)} · {t(comparison)} {money(picked.budget)}
+              </span>
+            </div>
+          )}
+        </Panel>
       </div>
+      <Panel
+        title={t('markets')}
+        subtitle={t('marketsSub')}
+        actions={
+          <button
+            className="text-button"
+            onClick={() =>
+              setFilters({ ...data.filters, entity: 'All entities' })
+            }
+          >
+            {t('resetView')}
+          </button>
+        }
+      >
+        <div className="market-grid">
+          {data.entities.map((entity) => (
+            <button
+              key={entity.name}
+              className="market-card"
+              onClick={() =>
+                setFilters({ ...data.filters, entity: entity.name })
+              }
+            >
+              <span className="market-name">
+                {entity.name === 'Germany' ? '🇩🇪' : '🇬🇧'} {t(entity.name)}{' '}
+                <ArrowUpRight size={17} />
+              </span>
+              <strong>{money(entity.actual)}</strong>
+              <span>
+                {t('Revenue')} · {num(entity.fte, 1)} FTE
+              </span>
+              <small
+                className={
+                  entity.actual < entity.budget ? 'adverse' : 'favourable'
+                }
+              >
+                {num(percent(entity.actual, entity.budget), 1)}% {t('vs')}{' '}
+                {t(comparison)}
+              </small>
+            </button>
+          ))}
+        </div>
+      </Panel>
     </>
   );
 }
-function Variance({ data }: { data: DashboardData }) {
-  const bridge = data.variance.filter((v) => v.account !== 'EBITDA');
+function Variance({
+  data,
+  openVisual,
+}: {
+  data: DashboardData;
+  openVisual: (r: VisualRequest) => void;
+}) {
+  const { t, money, num } = useLocale(),
+    [account, setAccount] = useState('all'),
+    [chart, setChart] = useState<ChartKind>('bar');
+  const comparison = data.filters.comparison || 'Budget';
+  const rows = data.variance.filter(
+    (v) =>
+      v.account !== 'EBITDA' && (account === 'all' || account === v.account)
+  );
   return (
     <>
       <div className="metrics three">
+        <Metric label={t('ebitda')} value={data.actual.ebitda} />
         <Metric
-          label="Budget EBITDA"
-          value={money(data.budget.ebitda)}
-          change={0}
-          caption="Planning baseline"
-          icon={Layers3}
-          neutral
+          label={`${t(comparison)} ${t('EBITDA')}`}
+          value={data.budget.ebitda}
         />
         <Metric
-          label="Actual EBITDA"
-          value={money(data.actual.ebitda)}
-          change={deltaPercent(data.actual.ebitda, data.budget.ebitda)}
-          caption="vs. budget"
-          icon={BarChart3}
-        />
-        <Metric
-          label="Operating expenses"
-          value={money(data.actual.opex)}
-          change={-deltaPercent(data.actual.opex, data.budget.opex)}
-          caption="favourability vs. budget"
-          icon={Activity}
+          label={t('delta')}
+          value={data.actual.ebitda - data.budget.ebitda}
+          onClick={() =>
+            openVisual({
+              metric: 'variance',
+              dimension: 'account',
+              filters: data.filters,
+            })
+          }
         />
       </div>
       <Panel
-        title="What moved EBITDA?"
-        subtitle="Favourable variance adds to EBITDA. Adverse variance reduces it."
+        title={t('varianceDrivers')}
+        subtitle={t('varianceNote')}
+        actions={
+          <div className="chart-controls">
+            <Select
+              label={t('account')}
+              value={account}
+              onChange={setAccount}
+              options={[
+                { value: 'all', label: t('allAccounts') },
+                ...data.variance
+                  .filter((v) => v.account !== 'EBITDA')
+                  .map((v) => ({ value: v.account, label: t(v.account) })),
+              ]}
+            />
+            <ChartSelect value={chart} onChange={setChart} allowPie={false} />
+          </div>
+        }
       >
-        <div className="chart-box variance-chart">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={bridge}
-              layout="vertical"
-              margin={{ left: 20, right: 30, top: 10, bottom: 10 }}
-            >
-              <CartesianGrid stroke="#edf0ed" horizontal={false} />
-              <XAxis
-                type="number"
-                tickFormatter={(v) => money(v)}
-                axisLine={false}
-                tickLine={false}
-                tick={{ fontSize: 11 }}
-              />
-              <YAxis
-                type="category"
-                dataKey="account"
-                width={170}
-                axisLine={false}
-                tickLine={false}
-                tick={{ fontSize: 12 }}
-              />
-              <ReferenceLine x={0} stroke="#aeb8b0" />
-              <Tooltip formatter={(v) => money(Number(v), false)} />
-              <Bar
-                dataKey="favourable"
-                name="EBITDA impact"
-                radius={[5, 5, 5, 5]}
-                barSize={28}
-              >
-                {bridge.map((v) => (
-                  <Cell
-                    key={v.account}
-                    fill={v.favourable >= 0 ? '#286b56' : '#c98b6b'}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <Chart
+          rows={rows.map((v) => ({ name: v.account, value: v.favourable }))}
+          kind={chart}
+          version="contribution"
+          showComparison={false}
+          onPick={setAccount}
+        />
       </Panel>
-      <Panel
-        title="Budget to actual"
-        subtitle="Positive expense values · currency EUR"
-      >
+      <Panel title={t('details')}>
         <div className="table-scroll">
           <table>
             <thead>
               <tr>
-                <th>Account</th>
-                <th>Actual</th>
-                <th>Budget</th>
-                <th>Actual − budget</th>
-                <th>EBITDA impact</th>
-                <th>Variance</th>
+                <th>{t('account')}</th>
+                <th>{t('Actual')}</th>
+                <th>{t(comparison)}</th>
+                <th>{t('delta')}</th>
+                <th>{t('contribution')}</th>
               </tr>
             </thead>
             <tbody>
-              {data.variance.map((v) => (
-                <tr
-                  className={v.account === 'EBITDA' ? 'total-row' : ''}
-                  key={v.account}
-                >
-                  <td>{v.account}</td>
-                  <td>{money(v.actual, false)}</td>
-                  <td>{money(v.budget, false)}</td>
-                  <td>{money(v.delta, false)}</td>
-                  <td className={v.favourable >= 0 ? 'positive' : 'negative'}>
-                    {money(v.favourable, false)}
-                  </td>
-                  <td>
-                    <span
-                      className={v.favourable >= 0 ? 'badge good' : 'badge bad'}
-                    >
-                      {v.percent === null
-                        ? 'n/a'
-                        : `${Math.abs(v.percent).toFixed(1)}%`}{' '}
-                      {v.favourable >= 0 ? 'favourable' : 'adverse'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {data.variance
+                .filter(
+                  (v) =>
+                    account === 'all' ||
+                    account === v.account ||
+                    v.account === 'EBITDA'
+                )
+                .map((v) => (
+                  <tr key={v.account}>
+                    <td>
+                      <button
+                        className="text-button"
+                        onClick={() =>
+                          setAccount(account === v.account ? 'all' : v.account)
+                        }
+                      >
+                        {t(v.account)}
+                      </button>
+                    </td>
+                    <td>{money(v.actual, false)}</td>
+                    <td>{money(v.budget, false)}</td>
+                    <td>{money(v.delta, false)}</td>
+                    <td className={v.favourable < 0 ? 'adverse' : 'favourable'}>
+                      {money(v.favourable, false)}{' '}
+                      {v.percent !== null && (
+                        <small>({num(v.percent, 1)}%)</small>
+                      )}
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
@@ -593,177 +390,103 @@ function Variance({ data }: { data: DashboardData }) {
     </>
   );
 }
-function Workforce({ data }: { data: DashboardData }) {
-  const a = data.actual,
-    b = data.budget;
+function Workforce({
+  data,
+  setFilters,
+}: {
+  data: DashboardData;
+  setFilters: (f: Filters) => void;
+}) {
+  const { t, money, num } = useLocale(),
+    [metric, setMetric] = useState('cost'),
+    [chart, setChart] = useState<ChartKind>('bar');
+  const rows = data.departments.filter(
+      (d) => d.fte || d.cost || d.budgetFte || d.budgetCost
+    ),
+    comparison = data.filters.comparison || 'Budget';
   return (
     <>
       <div className="metrics three">
+        <Metric label={t('fte')} value={data.actual.fte} unit="FTE" />
+        <Metric label={t('personnel')} value={data.actual.personnel} />
         <Metric
-          label="Average workforce"
-          value={`${num(a.fte, 1)} FTE`}
-          change={deltaPercent(a.fte, b.fte)}
-          caption="vs. budget"
-          icon={Users}
-          neutral
+          label={t('costPerFte')}
+          value={data.actual.fte ? data.actual.personnel / data.actual.fte : 0}
         />
-        <Metric
-          label="Personnel expense"
-          value={money(a.personnel)}
-          change={-deltaPercent(a.personnel, b.personnel)}
-          caption="favourability vs. budget"
-          icon={Activity}
-        />
-        <Metric
-          label="Personnel / revenue"
-          value={`${(a.revenue ? (a.personnel / a.revenue) * 100 : 0).toFixed(1)}%`}
-          change={0}
-          caption="Workforce cost ratio"
-          icon={Layers3}
-          neutral
-        />
-      </div>
-      <div className="overview-grid">
-        <Panel
-          title="Workforce by department"
-          subtitle="Average monthly FTE · actual against budget"
-        >
-          <div className="chart-box">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={data.departments}
-                margin={{ left: 0, right: 10, bottom: 25 }}
-              >
-                <CartesianGrid vertical={false} stroke="#edf0ed" />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 10 }}
-                  interval={0}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11 }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip formatter={(v) => `${num(Number(v), 1)} FTE`} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar
-                  dataKey="fte"
-                  name="Actual"
-                  fill="#286b56"
-                  radius={[5, 5, 0, 0]}
-                  barSize={25}
-                />
-                <Bar
-                  dataKey="budgetFte"
-                  name="Budget"
-                  fill="#c9dace"
-                  radius={[5, 5, 0, 0]}
-                  barSize={25}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Panel>
-        {data.status.mode === 'demonstration' ? (
-          <Panel
-            title="Planning assumptions"
-            subtitle="The synthetic business story · 2026"
-          >
-            <div className="story-list">
-              <div>
-                <span className="story-number">01</span>
-                <h3>Hiring ahead of plan</h3>
-                <p>
-                  Germany’s engineering team expands ahead of budget during
-                  2026.
-                </p>
-              </div>
-              <div>
-                <span className="story-number">02</span>
-                <h3>Employer on-costs</h3>
-                <p>
-                  Germany actuals use a 23.5% employer cost rate, versus 22%
-                  planned.
-                </p>
-              </div>
-              <div>
-                <span className="story-number">03</span>
-                <h3>Currency sensitivity</h3>
-                <p>
-                  UK actual expenses include an illustrative 2.5% FX cost uplift
-                  in EUR.
-                </p>
-              </div>
-            </div>
-          </Panel>
-        ) : (
-          <Panel
-            title="Live workforce evidence"
-            subtitle="Read from your mapped TM1 view"
-          >
-            <div className="story-list">
-              <div>
-                <span className="story-number">01</span>
-                <h3>Trace the input</h3>
-                <p>
-                  Use the explorer to inspect FTE and Personnel by department
-                  and period.
-                </p>
-              </div>
-              <div>
-                <span className="story-number">02</span>
-                <h3>Check the assumptions</h3>
-                <p>
-                  Salary rates, employer on-costs and FX treatment depend on
-                  your corporate cube. Synthetic assumptions do not describe
-                  these live figures.
-                </p>
-              </div>
-              <div>
-                <span className="story-number">03</span>
-                <h3>Confirm coverage</h3>
-                <p>
-                  Period completeness is assessed within the returned MDX scope.
-                  Validate that scope with the model owner.
-                </p>
-              </div>
-            </div>
-          </Panel>
-        )}
       </div>
       <Panel
-        title="Department cost view"
-        subtitle={
-          data.status.mode === 'demonstration'
-            ? 'FTE averaged over selected months. Salary costs include employer on-costs.'
-            : 'Average returned monthly FTE. Personnel expense follows your TM1 account mapping.'
+        title={t(metric === 'cost' ? 'workforceCost' : 'workforceCapacity')}
+        subtitle={t('departmentSub')}
+        actions={
+          <div className="chart-controls">
+            <Select
+              label={t('metric')}
+              value={metric}
+              onChange={setMetric}
+              options={[
+                { value: 'cost', label: t('personnel') },
+                { value: 'fte', label: t('fte') },
+              ]}
+            />
+            <ChartSelect value={chart} onChange={setChart} />
+          </div>
+        }
+      >
+        <Chart
+          rows={rows.map((d) => ({
+            name: d.name,
+            value: metric === 'cost' ? d.cost : d.fte,
+            baseline: metric === 'cost' ? d.budgetCost : d.budgetFte,
+          }))}
+          kind={chart}
+          comparison={comparison}
+          unit={metric === 'cost' ? 'EUR' : 'FTE'}
+          onPick={(name) => setFilters({ ...data.filters, department: name })}
+        />
+        <p className="note">{t('fteNote')}</p>
+      </Panel>
+      <Panel
+        title={t('departmentView')}
+        actions={
+          <button
+            className="text-button"
+            onClick={() =>
+              setFilters({ ...data.filters, department: 'All departments' })
+            }
+          >
+            {t('resetView')}
+          </button>
         }
       >
         <div className="table-scroll">
           <table>
             <thead>
               <tr>
-                <th>Department</th>
-                <th>Actual FTE</th>
-                <th>Budget FTE</th>
-                <th>Personnel cost</th>
-                <th>Budget cost</th>
-                <th>Cost variance</th>
+                <th>{t('department')}</th>
+                <th>{t('fte')}</th>
+                <th>{t(comparison)} FTE</th>
+                <th>{t('personnel')}</th>
+                <th>{t('delta')}</th>
               </tr>
             </thead>
             <tbody>
-              {data.departments.map((d) => (
+              {rows.map((d) => (
                 <tr key={d.name}>
-                  <td>{d.name}</td>
+                  <td>
+                    <button
+                      className="text-button"
+                      onClick={() =>
+                        setFilters({ ...data.filters, department: d.name })
+                      }
+                    >
+                      {t(d.name)}
+                    </button>
+                  </td>
                   <td>{num(d.fte, 1)}</td>
                   <td>{num(d.budgetFte, 1)}</td>
                   <td>{money(d.cost, false)}</td>
-                  <td>{money(d.budgetCost, false)}</td>
                   <td
-                    className={d.cost <= d.budgetCost ? 'positive' : 'negative'}
+                    className={d.cost > d.budgetCost ? 'adverse' : 'favourable'}
                   >
                     {money(d.cost - d.budgetCost, false)}
                   </td>
@@ -780,34 +503,30 @@ type SavedScenario = {
   id: string;
   name: string;
   assumptions: {
-    filters: Filters;
     revenuePercent: number;
     salaryPercent: number;
     additionalFte: number;
+    filters: Filters;
   };
-  results: { ebitda: number; delta: number };
+  results: { ebitda: number };
   created_at: string;
-  data_source: string;
 };
-function ScenarioLab({
-  data,
-  onFilters,
-}: {
-  data: DashboardData;
-  onFilters: (f: Filters) => void;
-}) {
-  const [revenue, setRevenue] = useState(0),
+function ScenarioLab({ data }: { data: DashboardData }) {
+  const { t, money, num } = useLocale(),
+    [revenue, setRevenue] = useState(0),
     [salary, setSalary] = useState(0),
     [fte, setFte] = useState(0),
-    [name, setName] = useState('My planning scenario'),
+    [name, setName] = useState(''),
     [saved, setSaved] = useState<SavedScenario[]>([]),
-    [saving, setSaving] = useState(false),
-    [notice, setNotice] = useState('');
-  const s = scenario(data.actual, revenue, salary, fte);
+    [busy, setBusy] = useState(false),
+    [status, setStatus] = useState(''),
+    [chart, setChart] = useState<ChartKind>('bar');
+  const safeFte = Math.max(fte, -Math.floor(data.actual.fte));
+  const projected = scenario(data.actual, revenue, salary, safeFte);
   const load = useCallback(
     () =>
       fetch('/api/scenarios')
-        .then(jsonResponse)
+        .then(readJson)
         .then((r) => setSaved(r.scenarios))
         .catch(() => {}),
     []
@@ -816,10 +535,10 @@ function ScenarioLab({
     load();
   }, [load]);
   async function save() {
-    setSaving(true);
-    setNotice('');
+    setBusy(true);
+    setStatus('');
     try {
-      await jsonResponse(
+      await readJson(
         await fetch('/api/scenarios', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -828,198 +547,177 @@ function ScenarioLab({
             filters: data.filters,
             revenuePercent: revenue,
             salaryPercent: salary,
-            additionalFte: fte,
+            additionalFte: safeFte,
           }),
         })
       );
-      setNotice('Scenario saved in Neon.');
-      await load();
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : 'Could not save.');
+      setStatus('saved');
+      load();
+    } catch {
+      setStatus('saveFailed');
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
+  const sliders = [
+    {
+      id: 'revenueGrowth',
+      value: revenue,
+      set: setRevenue,
+      min: -30,
+      max: 30,
+      step: 0.5,
+      unit: '%',
+    },
+    {
+      id: 'salaryChange',
+      value: salary,
+      set: setSalary,
+      min: -10,
+      max: 20,
+      step: 0.5,
+      unit: '%',
+    },
+    {
+      id: 'additionalFte',
+      value: safeFte,
+      set: setFte,
+      min: Math.max(-100, -Math.floor(data.actual.fte)),
+      max: 100,
+      step: 1,
+      unit: 'FTE',
+    },
+  ];
   return (
     <>
-      <div className="scenario-grid">
-        <Panel
-          title="Change the assumptions"
-          subtitle="Apply to the selected Actual period"
-        >
-          <div className="sliders">
-            {[
-              {
-                label: 'Revenue growth',
-                value: revenue,
-                set: setRevenue,
-                min: -30,
-                max: 30,
-                unit: '%',
-              },
-              {
-                label: 'Salary rate change',
-                value: salary,
-                set: setSalary,
-                min: -10,
-                max: 20,
-                unit: '%',
-              },
-              {
-                label: 'Additional average FTE',
-                value: fte,
-                set: setFte,
-                min: -100,
-                max: 100,
-                unit: ' FTE',
-              },
-            ].map((c) => (
-              <div className="slider-field" key={c.label}>
-                <div>
-                  <label>{c.label}</label>
+      <div className="two-columns">
+        <Panel title={t('assumptions')} subtitle={t('scenarioNote')}>
+          <div className="scenario-controls">
+            {sliders.map((slider) => (
+              <label key={slider.id} className="slider-field">
+                <span>
+                  {t(slider.id)}
                   <strong>
-                    {c.value > 0 ? '+' : ''}
-                    {c.value}
-                    {c.unit}
+                    {slider.value > 0 ? '+' : ''}
+                    {num(slider.value, slider.step === 1 ? 0 : 1)} {slider.unit}
                   </strong>
-                </div>
+                </span>
                 <input
-                  aria-label={c.label}
                   type="range"
-                  min={c.min}
-                  max={c.max}
-                  value={c.value}
-                  onChange={(e) => c.set(Number(e.target.value))}
+                  aria-label={t(slider.id)}
+                  value={slider.value}
+                  min={slider.min}
+                  max={slider.max}
+                  step={slider.step}
+                  onChange={(e) => slider.set(Number(e.target.value))}
                 />
-                <div className="range-labels">
+                <small>
+                  {slider.min} {slider.unit}
                   <span>
-                    {c.min}
-                    {c.unit}
+                    {slider.max} {slider.unit}
                   </span>
-                  <span>
-                    {c.max}
-                    {c.unit}
-                  </span>
-                </div>
+                </small>
+              </label>
+            ))}
+            <label className="field">
+              <span>{t('scenarioName')}</span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={80}
+              />
+            </label>
+            <button
+              className="primary"
+              disabled={busy || !name.trim() || !data.status.databaseConnected}
+              onClick={save}
+            >
+              {busy ? (
+                <Loader2 className="spin" size={17} />
+              ) : (
+                <Download size={17} />
+              )}{' '}
+              {t('saveScenario')}
+            </button>
+            {status && <p role="status">{t(status)}</p>}
+          </div>
+        </Panel>
+        <Panel
+          title={t('simulation')}
+          actions={
+            <ChartSelect value={chart} onChange={setChart} allowPie={false} />
+          }
+        >
+          <div className="scenario-result">
+            <span>{t('EBITDA')}</span>
+            <strong>{money(projected.ebitda)}</strong>
+            <span className={projected.delta < 0 ? 'adverse' : 'favourable'}>
+              {money(projected.delta)} {t('delta')}
+            </span>
+          </div>
+          <Chart
+            rows={[
+              {
+                name: 'Revenue',
+                value: projected.revenue,
+                baseline: data.actual.revenue,
+              },
+              {
+                name: 'Personnel',
+                value: projected.personnel,
+                baseline: data.actual.personnel,
+              },
+              {
+                name: 'EBITDA',
+                value: projected.ebitda,
+                baseline: data.actual.ebitda,
+              },
+            ]}
+            kind={chart}
+            version="simulation"
+            comparison="Actual"
+            height={240}
+          />
+        </Panel>
+      </div>
+      <Panel title={t('savedScenarios')} subtitle={t('savedPrivate')}>
+        {saved.length ? (
+          <div className="saved-grid">
+            {saved.map((s) => (
+              <div className="saved-card" key={s.id}>
+                <strong>{s.name}</strong>
+                <span>{money(s.results.ebitda)} EBITDA</span>
+                <small>
+                  {s.assumptions.filters.year} ·{' '}
+                  {t(s.assumptions.filters.entity)} ·{' '}
+                  {num(s.assumptions.revenuePercent, 1)}% /{' '}
+                  {num(s.assumptions.salaryPercent, 1)}% /{' '}
+                  {num(s.assumptions.additionalFte)} FTE
+                </small>
+                <button
+                  className="text-button"
+                  onClick={() => {
+                    setRevenue(s.assumptions.revenuePercent);
+                    setSalary(s.assumptions.salaryPercent);
+                    setFte(s.assumptions.additionalFte);
+                    setName(s.name);
+                  }}
+                >
+                  {t('apply')} <ArrowUpRight size={15} />
+                </button>
               </div>
             ))}
           </div>
-          <div className="scenario-save">
-            <label htmlFor="scenario-name">Scenario name</label>
-            <input
-              id="scenario-name"
-              maxLength={80}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <button
-              className="primary"
-              onClick={save}
-              disabled={
-                saving || !name.trim() || !data.status.databaseConnected
-              }
-            >
-              {saving ? (
-                <Loader2 size={16} className="spin" />
-              ) : (
-                <Database size={16} />
-              )}
-              Save scenario
-            </button>
-            <p className="save-notice" role="status">
-              {notice}
-            </p>
-          </div>
-        </Panel>
-        <div className="scenario-results">
-          <span className="eyebrow">YOUR SCENARIO</span>
-          <h2>{money(s.ebitda)}</h2>
-          <p>Projected EBITDA for the selected period</p>
-          <span
-            className={`scenario-delta ${s.delta >= 0 ? 'positive' : 'negative'}`}
-          >
-            {s.delta >= 0 ? (
-              <ArrowUpRight size={18} />
-            ) : (
-              <ArrowDownRight size={18} />
-            )}{' '}
-            {money(Math.abs(s.delta))}{' '}
-            {s.delta >= 0 ? 'improvement' : 'reduction'}
-          </span>
-          <div className="scenario-result-rows">
-            <div>
-              <span>Revenue</span>
-              <strong>{money(s.revenue)}</strong>
-            </div>
-            <div>
-              <span>Personnel expense</span>
-              <strong>{money(s.personnel)}</strong>
-            </div>
-            <div>
-              <span>Operating expenses</span>
-              <strong>{money(s.opex)}</strong>
-            </div>
-            <div>
-              <span>EBITDA margin</span>
-              <strong>{s.margin.toFixed(1)}%</strong>
-            </div>
-            <div>
-              <span>Baseline EBITDA</span>
-              <strong>{money(data.actual.ebitda)}</strong>
-            </div>
-          </div>
-          <div className="scenario-note">
-            <ShieldCheck size={18} />
-            <p>
-              A simulation using the finance engine. Saved scenarios stay
-              separate from Actual, Budget and TM1.
-            </p>
-          </div>
-        </div>
-      </div>
-      <Panel
-        title="Saved scenarios"
-        subtitle="Stored in Neon · private to this browser session"
-      >
-        {saved.length ? (
-          <div className="saved-grid">
-            {saved.map((sc) => (
-              <button
-                className="saved-card"
-                key={sc.id}
-                onClick={() => {
-                  onFilters(sc.assumptions.filters);
-                  setRevenue(sc.assumptions.revenuePercent);
-                  setSalary(sc.assumptions.salaryPercent);
-                  setFte(sc.assumptions.additionalFte);
-                  setName(sc.name);
-                  setNotice('Saved assumptions restored.');
-                }}
-              >
-                <div>
-                  <Layers3 size={17} />
-                  <span>
-                    {new Date(sc.created_at).toLocaleDateString('en-GB')}
-                  </span>
-                </div>
-                <strong>{sc.name}</strong>
-                <p>{money(sc.results.ebitda)} EBITDA</p>
-                <span>
-                  {sc.assumptions.filters.entity} ·{' '}
-                  {sc.assumptions.filters.year} · {sc.data_source}
-                </span>
-              </button>
-            ))}
-          </div>
         ) : (
-          <Empty>Your first saved scenario will appear here.</Empty>
+          <p className="empty">{t('emptyScenarios')}</p>
         )}
       </Panel>
     </>
   );
 }
 function Explorer({ filters }: { filters: Filters }) {
-  const [version, setVersion] = useState('Actual'),
+  const { t, num } = useLocale(),
+    [version, setVersion] = useState('Actual'),
     [account, setAccount] = useState('All accounts'),
     [page, setPage] = useState(1),
     [result, setResult] = useState<{
@@ -1027,271 +725,278 @@ function Explorer({ filters }: { filters: Filters }) {
       total: number;
       pages: number;
     } | null>(null),
-    [loading, setLoading] = useState(false);
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetch(
-      `/api/explorer?${query(filters)}&version=${version}&account=${encodeURIComponent(account)}&page=${page}`
-    )
-      .then(jsonResponse)
-      .then((d) => {
-        if (active) setResult(d);
-      })
-      .catch(() => {
-        if (active) setResult(null);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [filters, version, account, page]);
+    [error, setError] = useState(false);
+  const q = `${filterQuery(filters)}&version=${encodeURIComponent(version)}&account=${encodeURIComponent(account)}&page=${page}`;
   useEffect(() => {
     setPage(1);
-  }, [filters, version, account]);
+  }, [filterQuery(filters), version, account]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setError(false);
+    setResult(null);
+    fetch(`/api/explorer?${q}`, { signal: controller.signal })
+      .then(readJson)
+      .then(setResult)
+      .catch((err) => {
+        if (err.name !== 'AbortError') setError(true);
+      });
+    return () => controller.abort();
+  }, [q]);
   return (
-    <>
-      <div className="cube-model">
-        <div className="cube-symbol">
-          <Layers3 size={30} />
+    <Panel
+      title={t('cubeSlice')}
+      subtitle={result ? `${num(result.total)} ${t('records')}` : t('loading')}
+      actions={
+        <div className="chart-controls">
+          <Select
+            label={t('version')}
+            value={version}
+            onChange={setVersion}
+            options={VERSIONS.map((value) => ({ value, label: t(value) }))}
+          />
+          <Select
+            label={t('account')}
+            value={account}
+            onChange={setAccount}
+            options={['All accounts', ...ACCOUNTS].map((value) => ({
+              value,
+              label: value === 'All accounts' ? t('allAccounts') : t(value),
+            }))}
+          />
         </div>
-        <div>
-          <h2>Finance_Plan</h2>
-          <p>Period × Entity × Department × Product × Account × Version</p>
-        </div>
-        <span className="badge neutral">Canonical finance model</span>
-      </div>
-      <Panel
-        title="Cube slice"
-        subtitle="The same contract for live TM1 and synthetic facts"
-        action={
-          <div className="inline-controls">
-            <select
-              aria-label="Explorer version"
-              value={version}
-              onChange={(e) => setVersion(e.target.value)}
-            >
-              {VERSIONS.map((v) => (
-                <option key={v}>{v}</option>
+      }
+    >
+      {error && (
+        <p role="alert" className="inline-error">
+          {t('chatError')}
+        </p>
+      )}
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              {[
+                'period',
+                'entity',
+                'department',
+                'product',
+                'account',
+                'version',
+                'amount',
+                'unit',
+              ].map((key) => (
+                <th key={key}>{t(key)}</th>
               ))}
-            </select>
-            <select
-              aria-label="Explorer account"
-              value={account}
-              onChange={(e) => setAccount(e.target.value)}
-            >
-              {['All accounts', ...ACCOUNTS].map((v) => (
-                <option key={v}>{v}</option>
-              ))}
-            </select>
-          </div>
-        }
-      >
-        <div className={`table-scroll ${loading ? 'is-loading' : ''}`}>
-          <table>
-            <thead>
-              <tr>
-                <th>Period</th>
-                <th>Entity</th>
-                <th>Department</th>
-                <th>Product</th>
-                <th>Account</th>
-                <th>Value</th>
-                <th>Unit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result?.facts.map((f) => (
+              <tr key={f.id}>
+                <td>{f.period}</td>
+                <td>{t(f.entity)}</td>
+                <td>{t(f.department)}</td>
+                <td>{t(f.product)}</td>
+                <td>{t(f.account)}</td>
+                <td>{t(f.version)}</td>
+                <td>{num(f.amount, f.unit === 'count' ? 0 : 2)}</td>
+                <td>{t(f.unit)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {result?.facts.map((f) => (
-                <tr key={f.id}>
-                  <td>{f.period}</td>
-                  <td>{f.entity}</td>
-                  <td>{f.department}</td>
-                  <td>{f.product}</td>
-                  <td>{f.account}</td>
-                  <td>
-                    {f.unit === 'EUR'
-                      ? money(f.amount, false)
-                      : num(f.amount, 2)}
-                  </td>
-                  <td>{f.unit}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {!loading && !result?.facts.length && (
-          <Empty>No records for this slice.</Empty>
-        )}
-        <div className="pagination">
-          <span>
-            {num(result?.total || 0)} records · page {page} of{' '}
-            {Math.max(1, result?.pages || 1)}
-          </span>
-          <div>
-            <button
-              aria-label="Previous page"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              <ChevronLeft size={17} />
-            </button>
-            <button
-              aria-label="Next page"
-              disabled={page >= (result?.pages || 1)}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              <ChevronRight size={17} />
-            </button>
-          </div>
-        </div>
-      </Panel>
-    </>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {result && !result.facts.length && !error && (
+        <p className="empty">{t('noData')}</p>
+      )}
+      <div className="pagination">
+        <span>
+          {t('page')} {page} {t('of')} {Math.max(1, result?.pages || 0)}
+        </span>
+        <button
+          className="icon-button"
+          disabled={page === 1}
+          onClick={() => setPage((p) => p - 1)}
+          aria-label={t('previous')}
+        >
+          <ChevronLeft size={19} />
+        </button>
+        <button
+          className="icon-button"
+          disabled={page >= (result?.pages || 1)}
+          onClick={() => setPage((p) => p + 1)}
+          aria-label={t('next')}
+        >
+          <ChevronRight size={19} />
+        </button>
+      </div>
+    </Panel>
   );
 }
+
 type Answer = {
   question: string;
   answer: string;
   mode: string;
   notice: string;
-  model: string;
+  visualization: VisualRequest;
 };
-function Copilot({ data }: { data: DashboardData }) {
-  const [provider, setProvider] = useState('built-in'),
+function Copilot({
+  data,
+  openVisual,
+}: {
+  data: DashboardData;
+  openVisual: (r: VisualRequest) => void;
+}) {
+  const { t, language, money, num, month } = useLocale(),
+    [provider, setProvider] = useState('built-in'),
     [config, setConfig] = useState<{
-      openrouter: { configured: boolean; model: string };
-      ollama: { configured: boolean; model: string };
-      accessProtected: boolean;
+      openrouter: { configured: boolean };
+      ollama: { configured: boolean };
     } | null>(null),
-    [question, setQuestion] = useState(''),
-    [token, setToken] = useState(''),
+    [prompt, setPrompt] = useState(''),
     [answers, setAnswers] = useState<Answer[]>([]),
+    [format, setFormat] = useState('text'),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   useEffect(() => {
     fetch('/api/copilot')
-      .then(jsonResponse)
-      .then((configuration) => {
-        setConfig(configuration);
-        if (configuration.openrouter.configured) setProvider('openrouter');
-        else if (configuration.ollama.configured) setProvider('ollama');
+      .then(readJson)
+      .then((c) => {
+        setConfig(c);
+        if (c.openrouter.configured) setProvider('openrouter');
+        else if (c.ollama.configured) setProvider('ollama');
       })
       .catch(() => {});
   }, []);
-  async function ask(prompt = question) {
-    if (prompt.trim().length < 3 || busy) return;
+  async function ask(question = prompt) {
+    if (question.trim().length < 3 || busy) return;
     setBusy(true);
     setError('');
-    setQuestion('');
+    setPrompt('');
     try {
-      const r = await jsonResponse(
-        await fetch(`/api/copilot?${query(data.filters)}`, {
+      const history = answers.slice(-2).flatMap((a) => [
+        { role: 'user', content: a.question },
+        { role: 'assistant', content: a.answer.slice(0, 6000) },
+      ]);
+      const response = await fetch(
+        `/api/copilot?${filterQuery(data.filters)}`,
+        {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            question: prompt,
-            provider,
-            accessToken: token,
-          }),
-        })
+          body: JSON.stringify({ question, provider, language, history }),
+        }
       );
-      setAnswers((a) => [...a, { ...r, question: prompt }]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Analysis unavailable.');
+      if (response.status === 429) {
+        setError('quota');
+        return;
+      }
+      const r = await readJson(response);
+      setAnswers((a) => [...a, { ...r, question }]);
+      if (format === 'visual') openVisual(r.visualization);
+    } catch {
+      setError('chatError');
     } finally {
       setBusy(false);
     }
   }
   return (
-    <div className="copilot-grid">
+    <div className="copilot-layout">
       <div className="chat-panel">
         <div className="chat-toolbar">
           <span>
-            <Sparkles size={18} />
-            Finance copilot
+            <Sparkles size={20} />
+            {t('copilot')}
           </span>
-          <select
-            aria-label="AI provider"
-            value={provider}
-            onChange={(e) => setProvider(e.target.value)}
-          >
-            <option value="built-in">Calculated analysis</option>
-            <option value="openrouter">
-              OpenRouter · GPT-6 Sol
-              {!config?.openrouter.configured ? ' (key pending)' : ''}
-            </option>
-            <option value="ollama">
-              Ollama Cloud{!config?.ollama.configured ? ' (key pending)' : ''}
-            </option>
-          </select>
+          <div className="chart-controls">
+            <Select
+              label={t('provider')}
+              value={provider}
+              onChange={setProvider}
+              options={[
+                { value: 'built-in', label: t('calculated') },
+                {
+                  value: 'openrouter',
+                  label: `OpenRouter${config?.openrouter.configured ? '' : ` · ${t('keyPending')}`}`,
+                },
+                {
+                  value: 'ollama',
+                  label: `Ollama Cloud${config?.ollama.configured ? '' : ` · ${t('keyPending')}`}`,
+                },
+              ]}
+            />
+            <Select
+              label={t('answerMode')}
+              value={format}
+              onChange={setFormat}
+              options={[
+                { value: 'text', label: t('textOnly') },
+                { value: 'visual', label: t('withVisual') },
+              ]}
+            />
+          </div>
         </div>
-        {provider !== 'built-in' &&
-          config?.[provider as 'openrouter' | 'ollama'].configured && (
-            <div className="token-field">
-              <label htmlFor="presenter-token">Presenter access code</label>
-              <input
-                id="presenter-token"
-                type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="Entered for this session only"
-              />
-            </div>
-          )}
         <div className="chat-messages">
-          {answers.length === 0 ? (
+          {!answers.length && (
             <div className="chat-welcome">
               <div className="copilot-orb">
-                <Sparkles size={28} />
+                <Sparkles size={34} />
               </div>
-              <h2>Your numbers have a story.</h2>
-              <p>
-                Let’s find it together. Ask about performance,
-                <br />
-                workforce costs or the full-year outlook.
-              </p>
+              <h2>{t('welcome')}</h2>
+              <p>{t('welcomeSub')}</p>
               <div className="suggestions">
-                {[
-                  'Why is EBITDA below budget?',
-                  'What is driving workforce costs?',
-                  'Explain the full-year forecast.',
-                ].map((p) => (
-                  <button key={p} onClick={() => ask(p)}>
-                    {p}
-                    <ArrowUpRight size={14} />
+                {['askGap', 'askWorkforce', 'askForecast'].map((key) => (
+                  <button key={key} disabled={busy} onClick={() => ask(t(key))}>
+                    {t(key)}
+                    <ArrowUpRight size={16} />
                   </button>
                 ))}
               </div>
             </div>
-          ) : (
-            answers.map((a, i) => (
-              <div className="conversation" key={i}>
-                <div className="user-question">{a.question}</div>
-                <div className="answer-label">
-                  <Sparkles size={14} />
-                  {a.mode === 'ai'
-                    ? 'Cloud AI response'
-                    : 'Calculated finance analysis'}
-                </div>
-                <div className="answer-text">{a.answer}</div>
-                <div className="answer-notice">
-                  <Info size={13} />
-                  {a.notice}
-                </div>
-              </div>
-            ))
           )}
+          {answers.map((answer, i) => (
+            <article className="conversation" key={i}>
+              <div className="user-question">{answer.question}</div>
+              <div className="answer-label">
+                <Sparkles size={17} />
+                {t(
+                  answer.mode === 'ai' ? 'cloudResponse' : 'calculatedResponse'
+                )}
+              </div>
+              <div className="answer-text">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
+                  {answer.answer}
+                </ReactMarkdown>
+              </div>
+              <div className="answer-footer">
+                <small>
+                  {answer.mode === 'ai'
+                    ? answer.notice
+                    : t(
+                        provider === 'built-in'
+                          ? 'calculatedNotice'
+                          : 'cloudFallback'
+                      )}
+                </small>
+                <button
+                  className="secondary"
+                  onClick={() => openVisual(answer.visualization)}
+                >
+                  <BarChart3 size={16} />
+                  {t('openVisual')}
+                </button>
+              </div>
+            </article>
+          ))}
           {busy && (
-            <div className="thinking">
+            <p className="thinking">
               <Loader2 className="spin" size={17} />
-              Reading the finance evidence…
-            </div>
+              {t('thinking')}
+            </p>
           )}
           {error && (
-            <div role="alert" className="inline-error">
-              {error}
-            </div>
+            <p className="inline-error" role="alert">
+              {t(error)}
+            </p>
           )}
         </div>
         <form
@@ -1302,699 +1007,465 @@ function Copilot({ data }: { data: DashboardData }) {
           }}
         >
           <input
-            aria-label="Finance question"
-            value={question}
+            aria-label={t('question')}
+            placeholder={t('askPlaceholder')}
+            value={prompt}
             maxLength={1200}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask a question about your financial plan…"
+            onChange={(e) => setPrompt(e.target.value)}
           />
           <button
-            aria-label="Send question"
-            disabled={busy || question.trim().length < 3}
+            className="primary icon-button"
+            aria-label={t('send')}
+            disabled={busy || prompt.trim().length < 3}
           >
-            <Send size={18} />
+            <Send size={20} />
           </button>
         </form>
-        <div className="chat-disclosure">
-          Answers use the selected finance slice. Review the evidence before a
-          decision.
-        </div>
+        <p className="chat-disclosure">{t('copilotNote')}</p>
       </div>
-      <div className="copilot-context">
-        <Panel
-          title="Grounded in your data"
-          subtitle="The current planning context"
+      <Panel
+        title={t('context')}
+        subtitle={t('contextSub')}
+        className="context-panel"
+      >
+        <dl>
+          {[
+            ['entity', t(data.filters.entity)],
+            ['department', t(data.filters.department || 'All departments')],
+            [
+              'period',
+              `${month(data.filters.fromMonth || 1)}–${month(data.filters.toMonth)} ${data.filters.year}`,
+            ],
+            ['Revenue', money(data.actual.revenue)],
+            ['EBITDA', money(data.actual.ebitda)],
+            ['records', num(data.rowCount)],
+            ['source', t(data.status.mode === 'live' ? 'live' : 'synthetic')],
+          ].map(([key, value]) => (
+            <div key={key}>
+              <dt>{t(key)}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+        <button
+          className="secondary"
+          onClick={() =>
+            openVisual({
+              metric: 'revenue',
+              dimension: 'period',
+              filters: data.filters,
+            })
+          }
         >
-          <div className="context-list">
-            <div>
-              <span>Entity</span>
-              <strong>{data.filters.entity}</strong>
-            </div>
-            <div>
-              <span>Period</span>
-              <strong>
-                Jan–{monthName(data.filters.toMonth)} {data.filters.year}
-              </strong>
-            </div>
-            <div>
-              <span>Revenue</span>
-              <strong>{money(data.actual.revenue)}</strong>
-            </div>
-            <div>
-              <span>EBITDA</span>
-              <strong>{money(data.actual.ebitda)}</strong>
-            </div>
-            <div>
-              <span>Evidence</span>
-              <strong>{num(data.rowCount)} records</strong>
-            </div>
-            <div>
-              <span>Source</span>
-              <strong>
-                {data.status.source === 'tm1' ? 'Live TM1' : 'Synthetic data'}
-              </strong>
-            </div>
-          </div>
-        </Panel>
-        <div className="subtle-note">
-          <ShieldCheck size={20} />
-          <h3>Explain. Explore. Review.</h3>
-          <p>
-            The copilot receives calculated financial evidence. It cannot change
-            budgets, execute TI, or write to TM1.
-          </p>
-          <p>
-            Without a provider key, responses are deterministic calculations and
-            clearly labelled.
-          </p>
-        </div>
-      </div>
+          <BarChart3 size={17} />
+          {t('openVisual')}
+        </button>
+      </Panel>
     </div>
   );
 }
-function Connections({
-  data,
-  onRefresh,
-}: {
-  data: DashboardData;
-  onRefresh: () => void;
-}) {
+function Guide({ navigate }: { navigate: (view: View) => void }) {
+  const { t } = useLocale();
+  const steps = [
+    ['guideScope', 'overview'],
+    ['guideAnalyze', 'variance'],
+    ['guideSimulate', 'scenarios'],
+    ['guideAi', 'copilot'],
+    ['guideConnect', 'connections'],
+    ['guideExport', 'explorer'],
+  ] as const;
   return (
     <>
-      <div className="connection-grid">
-        {[
-          {
-            name: 'IBM Planning Analytics',
-            subtitle: 'TM1 / finance cube',
-            icon: Layers3,
-            connected: data.status.tm1 === 'connected',
-            text:
-              data.status.tm1 === 'connected'
-                ? 'Connected'
-                : data.status.tm1 === 'unreachable'
-                  ? 'Not reachable'
-                  : 'Disconnected',
-            detail: data.status.reason,
-          },
-          {
-            name: 'Neon PostgreSQL',
-            subtitle: 'Persistent demo data & scenarios',
-            icon: Database,
-            connected: data.status.databaseConnected,
-            text: data.status.databaseConnected ? 'Connected' : 'Unavailable',
-            detail: data.status.databaseConnected
-              ? 'The synthetic finance dataset and your saved scenarios are stored in Neon, Frankfurt.'
-              : 'The dashboard is using a temporary in-memory fixture.',
-          },
-          {
-            name: 'Vercel',
-            subtitle: 'Application hosting',
-            icon: Cloud,
-            connected: true,
-            text: 'Application running',
-            detail:
-              'Dashboard and backend share one deployment. Every finance request checks the data-source route.',
-          },
-        ].map((c) => (
-          <div className="connection-card" key={c.name}>
-            <c.icon size={24} />
-            <h2>{c.name}</h2>
-            <p>{c.subtitle}</p>
-            <span className={c.connected ? 'badge good' : 'badge amber'}>
-              <i className="dot" />
-              {c.text}
-            </span>
-            <p className="connection-detail">{c.detail}</p>
-          </div>
+      <div className="guide-grid">
+        {steps.map(([key, view]) => (
+          <Panel key={key} title={t(key)}>
+            <p>{t(`${key}Text`)}</p>
+            <button className="text-button" onClick={() => navigate(view)}>
+              {t(view)} <ArrowUpRight size={16} />
+            </button>
+          </Panel>
         ))}
       </div>
-      <Panel
-        title="The automatic switch"
-        subtitle="One shared data contract keeps every finance view consistent."
-        action={
-          <button className="secondary" onClick={onRefresh}>
-            <RefreshCw size={15} />
-            Recheck connection
-          </button>
-        }
-      >
-        <div className="architecture-flow">
-          <div>
-            <LayoutDashboard size={23} />
-            <strong>Dashboard</strong>
-            <span>KPIs · charts · exports</span>
-          </div>
-          <ArrowRight size={20} />
-          <div>
-            <GitBranch size={23} />
-            <strong>Data-source manager</strong>
-            <span>Check credentials & read cube</span>
-          </div>
-          <ArrowRight size={20} />
-          <div className="source-options">
-            <span>
-              <i className="dot green" />
-              TM1 live cube
-            </span>
-            <span>
-              <i className="dot amber-dot" />
-              Neon synthetic data
-            </span>
-          </div>
-          <ArrowRight size={20} />
-          <div>
-            <BarChart3 size={23} />
-            <strong>Finance engine</strong>
-            <span>Variance · scenario · copilot</span>
-          </div>
-        </div>
-        <div className="architecture-note">
-          <Info size={16} />
-          <span>
-            Checked{' '}
-            {new Date(data.status.checkedAt).toLocaleTimeString('en-GB')}.
-            Missing configuration, timeouts and incompatible cube views each
-            trigger a labelled fallback.
-          </span>
-        </div>
-      </Panel>
-      <Panel
-        title="Enable live TM1 & cloud AI"
-        subtitle="Server-side settings in the Vercel project"
-      >
-        <div className="setup-grid">
-          <div>
-            <span className="story-number">01</span>
-            <h3>TM1 connection</h3>
-            <p>
-              Set the HTTPS REST URL, authentication, cube MDX mapping and an
-              application access password. The README includes the canonical
-              dimensions and a sample MDX query.
-            </p>
-          </div>
-          <div>
-            <span className="story-number">02</span>
-            <h3>OpenRouter</h3>
-            <p>
-              Add your API key and presenter access token. The configured model
-              is GPT-6 Sol with high reasoning effort for finance questions.
-            </p>
-          </div>
-          <div>
-            <span className="story-number">03</span>
-            <h3>Ollama Cloud</h3>
-            <p>
-              Add an Ollama API key to use the alternative cloud provider. The
-              model is configurable and the dashboard keeps the provider choice
-              visible.
-            </p>
-          </div>
-        </div>
-      </Panel>
-    </>
-  );
-}
-function Guide() {
-  return (
-    <>
-      <div className="guide-hero">
-        <span className="eyebrow">INDEPENDENT INTERVIEW PROOF OF CONCEPT</span>
-        <h2>
-          Financial planning.
-          <br />
-          With a TM1 mindset.
-        </h2>
-        <p>
-          TalentPlan is a fictional recruitment marketplace operating in Germany
-          and the UK. It connects revenue drivers, workforce planning and
-          operating costs in a single financial view.
-        </p>
-      </div>
-      <Panel
-        title="A five-minute walkthrough"
-        subtitle="A useful route for finance stakeholders and your interview presentation"
-      >
-        <div className="walkthrough">
+      <Panel title={t('glossary')}>
+        <div className="glossary">
           {[
-            [
-              'Overview',
-              'Start with revenue, EBITDA and margin. Point out the synthetic source label.',
-            ],
-            [
-              'Variance analysis',
-              'Show the EBITDA impact of revenue shortfalls and cost overruns.',
-            ],
-            [
-              'Workforce',
-              'Explain average FTE, employer on-costs and currency sensitivity.',
-            ],
-            [
-              'Scenario lab',
-              'Test revenue growth or a hiring change, then save the scenario in Neon.',
-            ],
-            [
-              'TM1 explorer & copilot',
-              'Trace a cube slice, export to Excel, and explain the finance evidence.',
-            ],
-          ].map(([title, detail], i) => (
-            <div key={title}>
-              <span className="story-number">0{i + 1}</span>
-              <div>
-                <h3>{title}</h3>
-                <p>{detail}</p>
-              </div>
+            ['EBITDA', 'ebitdaDefinition'],
+            ['FTE', 'fteDefinition'],
+            ['Outlook', 'outlookDefinition'],
+            ['favourable', 'favourableDefinition'],
+          ].map(([term, definition]) => (
+            <div key={term}>
+              <strong>{t(term)}</strong>
+              <p>{t(definition)}</p>
             </div>
           ))}
         </div>
       </Panel>
-      <div className="setup-grid guide-cards">
-        <Panel title="Financial language">
-          <div className="glossary">
-            <p>
-              <strong>EBITDA</strong> · Earnings before interest, tax,
-              depreciation and amortisation. Revenue less modelled operating
-              expenses.
-            </p>
-            <p>
-              <strong>FP&A</strong> · Financial planning and analysis: budget,
-              forecast, scenario and performance review.
-            </p>
-            <p>
-              <strong>FTE</strong> · Full-time equivalent. Average monthly
-              capacity across the selected period.
-            </p>
-            <p>
-              <strong>Favourable variance</strong> · Higher revenue or lower
-              expense than budget.
-            </p>
-            <p>
-              <strong>Rolling forecast</strong> · Actuals for closed periods
-              plus forecast for open periods.
-            </p>
-          </div>
-        </Panel>
-        <Panel title="TM1 developer perspective">
-          <div className="glossary">
-            <p>
-              <strong>Cube & dimensions</strong> · Period, Entity, Department,
-              Product, Account, Version and Measure.
-            </p>
-            <p>
-              <strong>Rules & feeders</strong> · Example calculation sources are
-              included in the repository.
-            </p>
-            <p>
-              <strong>TurboIntegrator</strong> · Documented staged load and
-              reconciliation workflow.
-            </p>
-            <p>
-              <strong>MDX & REST</strong> · Read a mapped cube view into the
-              shared finance contract.
-            </p>
-            <p>
-              <strong>Governance</strong> · Read-only live integration, explicit
-              provenance and isolated saved scenarios.
-            </p>
-          </div>
-        </Panel>
-      </div>
-      <div className="about-note">
-        <Info size={18} />
-        <p>
-          This project is inspired by the public StepStone TM1 developer role.
-          It is an independent demonstration with synthetic data; it does not
-          reproduce StepStone’s internal systems. IBM integration examples
-          require validation on a licensed TM1 environment.
-        </p>
-      </div>
     </>
   );
 }
-export default function Dashboard() {
-  const [view, setView] = useState<View>('overview'),
-    [filters, setFilters] = useState<Filters>({
-      year: 2026,
-      toMonth: 9,
-      entity: 'All entities',
-    }),
+
+function Workspace({
+  language,
+  setLanguage,
+  theme,
+  setTheme,
+}: {
+  language: Language;
+  setLanguage: (l: Language) => void;
+  theme: 'light' | 'dark';
+  setTheme: (t: 'light' | 'dark') => void;
+}) {
+  const { t, num } = useLocale(),
+    [view, setView] = useState<View>('overview'),
+    [filters, setFilters] = useState<Filters>(defaults),
     [data, setData] = useState<DashboardData | null>(null),
     [loading, setLoading] = useState(true),
-    [error, setError] = useState(''),
-    [refresh, setRefresh] = useState(0),
-    [mobile, setMobile] = useState(false),
-    [exportMenu, setExportMenu] = useState(false);
+    [error, setError] = useState(false),
+    [reload, setReload] = useState(0),
+    [menu, setMenu] = useState(false),
+    [exportOpen, setExportOpen] = useState(false),
+    [visual, setVisual] = useState<VisualRequest | null>(null);
+  const q = filterQuery(filters);
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    setError('');
-    fetch(`/api/dashboard?${query(filters)}`, { signal: controller.signal })
-      .then(jsonResponse)
+    setError(false);
+    fetch(`/api/dashboard?${q}`, { signal: controller.signal })
+      .then(readJson)
       .then(setData)
-      .catch((e) => {
-        if (e.name !== 'AbortError') setError(e.message);
+      .catch((err) => {
+        if (err.name !== 'AbortError') setError(true);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [filters, refresh]);
-  const navigate = (v: View) => {
-    setView(v);
-    setMobile(false);
+  }, [q, reload]);
+  const navigate = (next: View) => {
+    setView(next);
+    setMenu(false);
+    setExportOpen(false);
   };
-  const download = (format: string, scope: string) => {
-    window.location.href = `/api/export?${query(filters)}&format=${format}&scope=${scope}`;
-    setExportMenu(false);
-  };
+  const refresh = () => setReload((n) => n + 1);
+  async function download(format: 'csv' | 'xlsx', all = false) {
+    setExportOpen(false);
+    const response = await fetch(
+      `/api/export?${q}&format=${format}${all ? '&scope=all' : ''}`
+    );
+    if (!response.ok) {
+      setError(true);
+      return;
+    }
+    const blob = await response.blob(),
+      url = URL.createObjectURL(blob),
+      a = document.createElement('a');
+    a.href = url;
+    a.download =
+      response.headers
+        .get('content-disposition')
+        ?.match(/filename="([^"]+)"/)?.[1] || `talentplan.${format}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${mobile ? 'mobile-open' : ''}`}>
-        <a href="/" className="brand">
-          <div className="brand-symbol">
-            t<span />
-          </div>
-          <div>
-            <strong>
-              talentplan<span>®</span>
-            </strong>
-            <p>Finance & planning</p>
-          </div>
+      {menu && (
+        <button
+          className="sidebar-backdrop"
+          aria-label={t('close')}
+          onClick={() => setMenu(false)}
+        />
+      )}
+      <aside className={`sidebar ${menu ? 'open' : ''}`}>
+        <a className="brand" href="/">
+          <span className="brand-mark">t.</span>
+          <span>
+            <strong>talentplan</strong>
+            <small>{t('financePlanning')}</small>
+          </span>
         </a>
         <div className="workspace-label">
-          <span className="workspace-dot" />
-          <span>Group Finance</span>
-          <span className="workspace-badge">POC</span>
+          <span className="status-dot" />
+          {t('groupFinance')}
+          <b>POC</b>
         </div>
-        <div className="nav-label">WORKSPACE</div>
+        <span className="nav-label">{t('workspace')}</span>
         <nav>
-          {nav.map((n) => (
+          {nav.map(({ id, icon: Icon }) => (
             <button
-              className={view === n.id ? 'nav-item active' : 'nav-item'}
-              key={n.id}
-              onClick={() => navigate(n.id)}
+              key={id}
+              className={view === id ? 'active' : ''}
+              aria-current={view === id ? 'page' : undefined}
+              onClick={() => navigate(id)}
             >
-              <n.icon size={18} />
-              <span>{n.label}</span>
-              {n.id === 'copilot' && <span className="ai-tag">AI</span>}
+              <Icon size={20} />
+              <span>{t(id)}</span>
+              {id === 'copilot' && <span className="ai-tag">AI</span>}
             </button>
           ))}
         </nav>
-        <div className="nav-label system-label">SYSTEM</div>
-        <nav>
-          <button
-            className={view === 'connections' ? 'nav-item active' : 'nav-item'}
-            onClick={() => navigate('connections')}
-          >
-            <PlugZap size={18} />
-            <span>Connections</span>
-            <i
-              className={`dot ${data?.status.tm1 === 'connected' ? 'green' : 'amber-dot'}`}
-            />
-          </button>
-          <button
-            className={view === 'guide' ? 'nav-item active' : 'nav-item'}
-            onClick={() => navigate('guide')}
-          >
-            <BookOpen size={18} />
-            <span>Presentation guide</span>
-          </button>
-        </nav>
         <div className="sidebar-bottom">
-          <div className="demo-note">
-            <ShieldCheck size={19} />
-            <strong>Purpose-built for planning.</strong>
-            <p>
-              {data?.status.mode === 'live'
-                ? 'Live TM1 data is active.'
-                : 'Synthetic data. Real possibilities.'}
-            </p>
-          </div>
+          <p>
+            {t('financePlanning')}
+            <br />
+            <strong>TalentPlan</strong>
+          </p>
           <div className="profile">
-            <div className="avatar">SP</div>
+            <span>SP</span>
             <div>
               <strong>Soham Patra</strong>
-              <span>TM1 developer · Portfolio</span>
+              <small>{t('owner')}</small>
             </div>
-            <Settings2 size={16} />
           </div>
         </div>
       </aside>
-      {mobile && (
-        <button
-          className="mobile-backdrop"
-          aria-label="Close navigation"
-          onClick={() => setMobile(false)}
-        />
-      )}
-      <div className="main-shell">
+      <main className="main">
         <header className="topbar">
           <div className="breadcrumb">
             <button
-              className="mobile-toggle"
-              aria-label="Open navigation"
-              onClick={() => setMobile(!mobile)}
+              className="icon-button mobile-menu"
+              onClick={() => setMenu(true)}
+              aria-label={t('workspace')}
             >
-              {mobile ? <X size={20} /> : <Menu size={20} />}
+              <Menu />
             </button>
-            <span>Workspace</span>
-            <ChevronRight size={13} />
-            <strong>
-              {view === 'overview'
-                ? 'Finance overview'
-                : nav.find((n) => n.id === view)?.label ||
-                  (view === 'guide' ? 'Presentation guide' : 'Connections')}
-            </strong>
+            <span>{t('workspace')}</span>
+            <ChevronRight size={15} />
+            <strong>{t(view)}</strong>
           </div>
-          <div className="topbar-right">
-            <span className="demo-pill">
-              <i
-                className={`dot ${data?.status.mode === 'live' ? 'green' : 'amber-dot'}`}
-              />
-              {data?.status.mode === 'live' ? 'Live TM1' : 'Demonstration mode'}
+          <div className="top-actions">
+            <span
+              className={`tag source-tag ${data?.status.mode === 'live' ? 'good' : ''}`}
+            >
+              {t(data?.status.mode === 'live' ? 'live' : 'synthetic')}
             </span>
-            <span className="top-date">FY {filters.year}</span>
+            <div className="language-toggle" aria-label={t('language')}>
+              <button
+                aria-pressed={language === 'en'}
+                onClick={() => setLanguage('en')}
+              >
+                EN
+              </button>
+              <button
+                aria-pressed={language === 'de'}
+                onClick={() => setLanguage('de')}
+              >
+                DE
+              </button>
+            </div>
+            <button
+              className="icon-button theme-toggle"
+              aria-label={t(theme === 'light' ? 'dark' : 'light')}
+              title={t(theme === 'light' ? 'dark' : 'light')}
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+            >
+              {theme === 'light' ? <Moon size={21} /> : <Sun size={21} />}
+            </button>
           </div>
         </header>
-        <main>
+        <div className="content">
           <div className="page-heading">
             <div>
-              <div className="eyebrow">GROUP FINANCE / PLANNING ANALYTICS</div>
-              <h1>{titles[view][0]}</h1>
-              <p>{titles[view][1]}</p>
+              <span className="eyebrow">
+                {t('groupFinance')} / {t('planningAnalytics')}
+              </span>
+              <h1>{t(`${view}Title`)}</h1>
+              <p>{t(`${view}Sub`)}</p>
             </div>
-            <div className="heading-actions">
+            <div className="page-actions">
               <button
-                className="secondary icon-button"
-                aria-label="Refresh dashboard"
-                onClick={() => setRefresh((r) => r + 1)}
+                className="icon-button"
                 disabled={loading}
+                onClick={refresh}
+                aria-label={t('refresh')}
               >
-                <RefreshCw size={17} className={loading ? 'spin' : ''} />
+                <RefreshCw size={20} className={loading ? 'spin' : ''} />
               </button>
               <div className="export-wrap">
                 <button
                   className="primary"
-                  onClick={() => setExportMenu((v) => !v)}
+                  onClick={() => setExportOpen((o) => !o)}
                   disabled={!data}
+                  aria-expanded={exportOpen}
                 >
-                  <ArrowDownToLine size={16} />
-                  Export data
-                  <ChevronRight size={13} className="rotate" />
+                  <Download size={18} />
+                  {t('export')}
                 </button>
-                {exportMenu && (
-                  <>
-                    <button
-                      className="menu-backdrop"
-                      aria-label="Close export menu"
-                      onClick={() => setExportMenu(false)}
-                    />
-                    <div className="export-menu">
-                      <span>SELECTED VIEW</span>
-                      <button onClick={() => download('xlsx', 'current')}>
-                        Excel workbook <Table2 size={15} />
+                {exportOpen && (
+                  <div className="export-menu">
+                    {[
+                      ['xlsx', false, 'selectedExcel'],
+                      ['csv', false, 'selectedCsv'],
+                      ['xlsx', true, 'allExcel'],
+                      ['csv', true, 'allCsv'],
+                    ].map(([format, all, label]) => (
+                      <button
+                        key={String(label)}
+                        onClick={() =>
+                          download(format as 'csv' | 'xlsx', all as boolean)
+                        }
+                      >
+                        {t(label as string)}
                       </button>
-                      <button onClick={() => download('csv', 'current')}>
-                        CSV file <ArrowDownToLine size={15} />
-                      </button>
-                      <span>COMPLETE DATASET</span>
-                      <button onClick={() => download('xlsx', 'all')}>
-                        All data · Excel
-                      </button>
-                      <button onClick={() => download('csv', 'all')}>
-                        All data · CSV
-                      </button>
-                    </div>
-                  </>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
           </div>
-          {view !== 'guide' && (
-            <div className="filter-bar">
-              <div className="filters">
-                <select
-                  aria-label="Reporting year"
-                  value={filters.year}
-                  onChange={(e) =>
-                    setFilters({
-                      ...filters,
-                      year: Number(e.target.value),
-                      toMonth: Number(e.target.value) === 2025 ? 12 : 9,
-                    })
-                  }
-                >
-                  <option value={2026}>FY 2026</option>
-                  <option value={2025}>FY 2025</option>
-                </select>
-                <select
-                  aria-label="Reporting period"
-                  value={filters.toMonth}
-                  onChange={(e) =>
-                    setFilters({ ...filters, toMonth: Number(e.target.value) })
-                  }
-                >
-                  {Array.from(
-                    { length: filters.year === 2026 ? 9 : 12 },
-                    (_, i) => (
-                      <option value={i + 1} key={i}>
-                        Jan – {monthName(i + 1)}
-                      </option>
-                    )
-                  )}
-                </select>
-                <div className="filter-divider" />
-                <select
-                  aria-label="Entity"
-                  value={filters.entity}
-                  onChange={(e) =>
-                    setFilters({ ...filters, entity: e.target.value })
-                  }
-                >
-                  <option>All entities</option>
-                  <option>Germany</option>
-                  <option>United Kingdom</option>
-                </select>
-              </div>
-              <span className="currency-note">
-                EUR <span>·</span> Actual vs. Budget
-              </span>
-            </div>
-          )}
-          {data && view !== 'guide' && (
-            <div
-              className={
-                data.status.tm1 === 'connected'
-                  ? 'source-banner live'
-                  : 'source-banner'
-              }
+          <div className="filter-panel">
+            <Scope filters={filters} onChange={setFilters} />
+            <button
+              className="text-button reset-filters"
+              onClick={() => setFilters({ ...defaults, year: filters.year })}
             >
-              <div className="source-icon">
-                {data.status.tm1 === 'connected' ? (
-                  <Check size={17} />
-                ) : (
-                  <TriangleAlert size={17} />
-                )}
-              </div>
+              {t('reset')}
+            </button>
+          </div>
+          {data && (
+            <div
+              className={`source-banner ${data.status.mode === 'live' ? 'source-live' : ''}`}
+            >
               <div>
+                {data.status.mode === 'live' ? (
+                  <CheckCircle2 size={21} />
+                ) : (
+                  <AlertTriangle size={21} />
+                )}
                 <strong>
-                  {data.status.tm1 === 'connected'
-                    ? 'TM1 connected'
-                    : data.status.tm1 === 'unreachable'
-                      ? 'TM1 not reachable'
-                      : 'TM1 disconnected'}
+                  {t(
+                    data.status.tm1 === 'connected'
+                      ? 'tm1Connected'
+                      : data.status.tm1 === 'disconnected'
+                        ? 'tm1Disconnected'
+                        : data.status.tm1 === 'unreachable'
+                          ? 'tm1Unreachable'
+                          : 'tm1Error'
+                  )}
                 </strong>
                 <span>
-                  {data.status.source === 'neon'
-                    ? 'Showing synthetic finance data stored in Neon.'
-                    : data.status.source === 'memory'
-                      ? 'Neon unavailable · using a temporary synthetic fixture.'
-                      : 'Showing live IBM Planning Analytics data.'}{' '}
-                  <span className="banner-reason">
-                    {data.status.source !== 'tm1' &&
-                      data.status.reason.split('. ')[0] + '.'}
-                  </span>
+                  {t(
+                    data.status.source === 'memory'
+                      ? 'memoryNote'
+                      : data.status.mode === 'live'
+                        ? 'liveNote'
+                        : 'sourceNote'
+                  )}
                 </span>
               </div>
-              <button onClick={() => navigate('connections')}>
-                Connection details <ArrowRight size={14} />
+              <button
+                className="text-button"
+                onClick={() => navigate('connections')}
+              >
+                {t('connectionDetails')}
+                <ArrowUpRight size={16} />
               </button>
             </div>
           )}
-          {error ? (
-            <div className="error-panel" role="alert">
-              <TriangleAlert />
-              <h2>We couldn’t load your dashboard.</h2>
-              <p>{error}</p>
-              <button
-                className="secondary"
-                onClick={() => setRefresh((r) => r + 1)}
-              >
-                Try again
+          {data &&
+            (data.coverage.partialActualPeriods.length > 0 ||
+              data.coverage.missingOutlookPeriods.length > 0) && (
+              <div className="coverage-banner">
+                <strong>{t('coverage')}</strong>
+                <p>
+                  {data.coverage.partialActualPeriods.length > 0 &&
+                    `${t('partial')}: ${data.coverage.partialActualPeriods.join(', ')}. `}
+                  {data.coverage.missingOutlookPeriods.length > 0 &&
+                    `${t('missing')}: ${data.coverage.missingOutlookPeriods.join(', ')}. `}
+                  {t('coverageNote')}
+                </p>
+              </div>
+            )}
+          {error && (
+            <div className="inline-error" role="alert">
+              {t('chatError')}{' '}
+              <button className="text-button" onClick={refresh}>
+                {t('retry')}
               </button>
             </div>
-          ) : !data ? (
-            <div className="loading-dashboard">
-              <Loader2 className="spin" size={24} />
-              <h2>Connecting your finance workspace…</h2>
-              <p>Checking the TM1 route and loading the Neon dataset.</p>
+          )}
+          {!data ? (
+            <div className="loading-state">
+              <Loader2 className="spin" size={28} />
+              <h2>{t('loading')}</h2>
+              <p>{t('loadingSub')}</p>
             </div>
           ) : (
             <div className={`view-content ${loading ? 'refreshing' : ''}`}>
-              {data.coverage &&
-                (data.coverage.partialActualPeriods.length > 0 ||
-                  data.coverage.missingOutlookPeriods.length > 0) && (
-                  <div className="source-banner">
-                    <Info size={18} />
-                    <div>
-                      <strong>Review data coverage</strong>
-                      <span>
-                        {data.coverage.partialActualPeriods.length > 0
-                          ? `Partial Actual periods: ${data.coverage.partialActualPeriods.join(', ')}. `
-                          : ''}
-                        {data.coverage.missingOutlookPeriods.length > 0
-                          ? `Incomplete annual outlook: ${data.coverage.missingOutlookPeriods.join(', ')}. `
-                          : ''}
-                        Figures use the returned cube scope. Forecast fills open
-                        coordinates; missing records are not assumed complete.
-                      </span>
-                    </div>
-                  </div>
-                )}
               {view === 'overview' && (
-                <Overview data={data} onView={navigate} />
-              )}{' '}
-              {view === 'variance' && <Variance data={data} />}{' '}
-              {view === 'workforce' && <Workforce data={data} />}{' '}
-              {view === 'scenario' && (
-                <ScenarioLab data={data} onFilters={setFilters} />
-              )}{' '}
-              {view === 'explorer' && <Explorer filters={filters} />}{' '}
-              {view === 'copilot' && <Copilot data={data} />}{' '}
-              {view === 'connections' && (
-                <Connections
+                <Overview
                   data={data}
-                  onRefresh={() => setRefresh((r) => r + 1)}
+                  setFilters={setFilters}
+                  openVisual={setVisual}
                 />
               )}{' '}
-              {view === 'guide' && <Guide />}
+              {view === 'variance' && (
+                <Variance data={data} openVisual={setVisual} />
+              )}{' '}
+              {view === 'workforce' && (
+                <Workforce data={data} setFilters={setFilters} />
+              )}{' '}
+              {view === 'scenarios' && <ScenarioLab data={data} />}{' '}
+              {view === 'explorer' && <Explorer filters={data.filters} />}{' '}
+              {view === 'copilot' && (
+                <Copilot data={data} openVisual={setVisual} />
+              )}{' '}
+              {view === 'connections' && (
+                <Connections data={data} onRefresh={refresh} />
+              )}{' '}
+              {view === 'guide' && <Guide navigate={navigate} />}
             </div>
           )}
           <footer>
+            <span>TalentPlan · {t('poc')}</span>
             <span>
-              TalentPlan <span>·</span> Independent TM1 interview POC
-            </span>
-            <span>
-              {data?.status.mode === 'live'
-                ? 'Live IBM Planning Analytics'
-                : 'Synthetic data · no company actuals'}{' '}
-              <i className="dot" />{' '}
               {data
-                ? `Updated ${new Date(data.status.checkedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
-                : 'Connecting'}
+                ? `${num(data.rowCount)} ${t('records')} · ${t(data.status.mode === 'live' ? 'live' : 'synthetic')}`
+                : '…'}
             </span>
           </footer>
-        </main>
-      </div>
+        </div>
+      </main>
+      {visual && (
+        <VisualWorkspace initial={visual} onClose={() => setVisual(null)} />
+      )}
     </div>
+  );
+}
+export default function Dashboard() {
+  const [language, setLanguage] = useState<Language>('en'),
+    [theme, setTheme] = useState<'light' | 'dark'>('light'),
+    [ready, setReady] = useState(false);
+  useEffect(() => {
+    try {
+      const lang = localStorage.getItem('talentplan-language');
+      if (lang === 'de' || lang === 'en') setLanguage(lang);
+      const saved = localStorage.getItem('talentplan-theme');
+      if (saved === 'dark' || saved === 'light') setTheme(saved);
+      else if (window.matchMedia('(prefers-color-scheme: dark)').matches)
+        setTheme('dark');
+    } catch {}
+    setReady(true);
+  }, []);
+  useEffect(() => {
+    document.documentElement.lang = language;
+    document.documentElement.dataset.theme = theme;
+    if (ready) {
+      try {
+        localStorage.setItem('talentplan-language', language);
+        localStorage.setItem('talentplan-theme', theme);
+      } catch {}
+    }
+  }, [language, theme, ready]);
+  return (
+    <LocaleContext.Provider value={language}>
+      <Workspace
+        language={language}
+        setLanguage={setLanguage}
+        theme={theme}
+        setTheme={setTheme}
+      />
+    </LocaleContext.Provider>
   );
 }

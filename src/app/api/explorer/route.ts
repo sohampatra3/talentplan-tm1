@@ -3,6 +3,7 @@ import { getDataset } from '@/lib/data-source';
 import { selectFacts } from '@/lib/finance';
 import { parseFilters } from '@/lib/validation';
 import { ACCOUNTS, VERSIONS } from '@/lib/types';
+import { sessionId } from '@/lib/security';
 export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
         { error: 'Invalid cube slice' },
         { status: 400 }
       );
-    const dataset = await getDataset();
+    const dataset = await getDataset(sessionId(request));
     const facts = selectFacts(dataset.facts, filters).filter(
       (f) =>
         f.version === version &&

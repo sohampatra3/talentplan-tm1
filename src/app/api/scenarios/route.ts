@@ -41,13 +41,18 @@ export async function POST(request: NextRequest) {
   const id = sessionId(request),
     input = parsed.data;
   try {
-    const dataset = await getDataset();
+    const dataset = await getDataset(id);
     if (!dataset.status.databaseConnected)
       return NextResponse.json(
         { error: 'Neon is unavailable. Scenario was not saved.' },
         { status: 503 }
       );
     const dashboard = buildDashboard(dataset, input.filters);
+    if (dashboard.actual.fte + input.additionalFte < 0)
+      return NextResponse.json(
+        { error: 'Additional FTE cannot reduce workforce below zero.' },
+        { status: 400 }
+      );
     const results = scenario(
       dashboard.actual,
       input.revenuePercent,

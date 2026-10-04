@@ -45,6 +45,9 @@ export interface Filters {
   year: number;
   toMonth: number;
   entity: string;
+  fromMonth?: number;
+  department?: string;
+  comparison?: 'Budget' | 'Forecast';
 }
 export interface Summary {
   revenue: number;
@@ -77,6 +80,11 @@ export interface DashboardData {
     budget: number;
     forecast: number;
     ebitda: number | null;
+    budgetEbitda: number;
+    forecastEbitda: number;
+    fte: number | null;
+    budgetFte: number;
+    forecastFte: number;
   }[];
   products: { name: string; value: number; budget: number }[];
   entities: {

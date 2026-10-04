@@ -13,6 +13,7 @@
     "verify": "npm run test && npm run typecheck && npm run build"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "@vercel/functions": "latest",
     "exceljs": "^4.4.0",
     "lucide-react": "latest",
@@ -20,7 +21,10 @@
     "pg": "^8.16.3",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-markdown": "^10.1.0",
     "recharts": "latest",
+    "remark-gfm": "^4.0.1",
+    "undici": "^8.11.2",
     "zod": "^4.0.0"
   },
   "devDependencies": {

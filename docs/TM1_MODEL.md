@@ -26,7 +26,7 @@ The numeric column has the technical name `Amount_EUR` for the interface, but FT
 
 Measures: Listing_Volume, Net_Listing_Price, Active_Subscriptions, Monthly_Subscription_Price, Talent_Services_Revenue, Average_FTE, Annual_Salary, Employer_Oncost_Rate, Marketing, Technology, General_Admin, Revenue, Personnel, EBITDA, EBITDA_Margin.
 
-The example `.rux` file operates on this driver cube. It is not a rule file for the seven-dimensional reporting contract. A TI publication process can publish calculated reporting leaves into Finance_Plan. The deployed demo does not perform that publication or write to IBM software.
+The example `.rux` file operates on this driver cube. It is not a rule file for the seven-dimensional reporting contract. A TI publication process can publish calculated reporting leaves into Finance_Plan. The application does not perform that publication or write to IBM software.
 
 For the POC rule template, only numeric leaf calculations are included. Consolidated EBITDA margin must be a ratio of consolidated EBITDA to consolidated Revenue, not the sum of leaf percentages. Average FTE at a consolidated time level also needs an explicit average/weighted rule. Review feeders against the actual model, rule-calculated zero behaviour and consolidation requirements.
 
@@ -52,7 +52,7 @@ This value is an illustrative example, not an actual database row or company fig
 
 The finance engine matches leaf coordinates by **Period × Entity × Department × Product × Account**, excluding Version. It uses an Actual value whenever that coordinate is returned; otherwise it uses the matching Forecast. A genuine zero Actual also takes precedence. Budget is a comparison and coverage reference, never a substitute outlook value. This prevents one entity's partial Actual load from suppressing another entity's Forecast for the same month.
 
-For example, if Germany Revenue Actual is 100 and Forecast is 120 while UK Revenue has only Forecast of 200, rolling revenue is **300**, not 100 or 320. Other accounts follow the same coordinate-level rule. The annual outlook uses all returned months for the selected year/entity scope, independently of the selected YTD cutoff.
+For example, if Germany Revenue Actual is 100 and Forecast is 120 while UK Revenue has only Forecast of 200, rolling revenue is **300**, not 100 or 320. Other accounts follow the same coordinate-level rule. The annual outlook uses all returned months for the selected year/entity/department scope, independently of the selected month range.
 
 Dashboard responses expose the following `coverage` fields:
 
@@ -92,6 +92,12 @@ flowchart LR
 
 Production load controls: source and loaded counts, rejects, Revenue/Opex totals, duplicate coordinates, dataset version, version ownership and a publish-ready state. Do not run a load directly on a production cube without the appropriate change controls.
 
-## Role narrative
+## REST and MCP integration
 
-The public role asks for modelling, rules, TI, MDX, integration, administration and stakeholder support. In this POC, the strongest executed evidence is the financial contract, source routing, Neon integration, status reporting, variance/scenario engine, exports and finance communication. The supplied TM1 design demonstrates preparedness; actual IBM authoring, feeder tuning and TI administration remain to be validated with access.
+The Connections workspace stores encrypted, browser-session-specific REST and MCP profiles in Neon. REST supplies validated facts through ExecuteMDX. MCP uses IBM's Streamable HTTP interface for initialisation and tool discovery; discovery does not execute external tools. The application also exposes its own read-only finance tools at `/api/mcp`.
+
+Current IBM deployments use the unified `/ibm-pa-tools/mcp` endpoint. Obtain the full deployment URL, compatible authentication and entitlement from the IBM administrator. Credentials support username/password, IBM API key (Basic `apikey:<key>`) and bearer/OAuth access tokens where supported. OAuth token refresh is an integration extension point.
+
+Corporate adoption can integrate approved identity, access control, private-network routing, monitoring and reconciliation while preserving the source adapter and financial contract.
+
+Reference: [IBM Assistant MCP tools](https://www.ibm.com/docs/en/planning-analytics/3.1.0?topic=assistant-mcp-tools).

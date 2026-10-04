@@ -4,6 +4,7 @@ import { getDataset } from '@/lib/data-source';
 import { parseFilters } from '@/lib/validation';
 import { selectFacts, buildDashboard } from '@/lib/finance';
 import { makeCsv, factColumns, exportRows } from '@/lib/export';
+import { sessionId } from '@/lib/security';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
         { error: 'Choose csv or xlsx.' },
         { status: 400 }
       );
-    const dataset = await getDataset();
+    const dataset = await getDataset(sessionId(request));
     const facts =
       request.nextUrl.searchParams.get('scope') === 'all'
         ? dataset.facts
@@ -36,10 +37,7 @@ export async function GET(request: NextRequest) {
     const info = workbook.addWorksheet('Read me');
     info.columns = [{ width: 32 }, { width: 100 }];
     info.addRows([
-      [
-        'TalentPlan finance export',
-        'Independent TM1 interview proof of concept',
-      ],
+      ['TalentPlan finance export', 'TM1 financial planning proof of concept'],
       ['Data source', dataset.status.source],
       ['Mode', dataset.status.mode],
       ['TM1 status', dataset.status.tm1],
@@ -87,7 +85,11 @@ export async function GET(request: NextRequest) {
     const summary = workbook.addWorksheet('Dashboard summary');
     summary.columns = [{ width: 32 }, { width: 24 }, { width: 24 }];
     summary.addRow(['Selected dashboard slice', JSON.stringify(filters)]);
-    summary.addRow(['Account', 'Actual EUR', 'Budget EUR']);
+    summary.addRow([
+      'Account',
+      'Actual EUR',
+      `${filters.comparison || 'Budget'} EUR`,
+    ]);
     for (const v of dashboard.variance)
       summary.addRow([v.account, v.actual, v.budget]);
     const sheet = workbook.addWorksheet('Finance facts');

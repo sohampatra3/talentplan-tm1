@@ -7,10 +7,11 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const filters = parseFilters(request.url);
-    const data = buildDashboard(await getDataset(), filters);
+    const id = sessionId(request);
+    const data = buildDashboard(await getDataset(id), filters);
     return attachSession(
       NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } }),
-      sessionId(request)
+      id
     );
   } catch {
     return NextResponse.json(

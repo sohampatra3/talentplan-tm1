@@ -12,8 +12,12 @@ export function selectFacts(facts: Fact[], filters: Filters): Fact[] {
   return facts.filter(
     (f) =>
       f.period.startsWith(`${filters.year}-`) &&
+      Number(f.period.slice(5)) >= (filters.fromMonth || 1) &&
       Number(f.period.slice(5)) <= filters.toMonth &&
-      (filters.entity === 'All entities' || f.entity === filters.entity)
+      (filters.entity === 'All entities' || f.entity === filters.entity) &&
+      (!filters.department ||
+        filters.department === 'All departments' ||
+        f.department === filters.department)
   );
 }
 export function summarize(facts: Fact[], version: Version): Summary {
@@ -48,9 +52,14 @@ export function buildDashboard(
   filters: Filters
 ): DashboardData {
   const facts = selectFacts(dataset.facts, filters);
+  const comparison = filters.comparison || 'Budget';
   const actual = summarize(facts, 'Actual'),
-    budget = summarize(facts, 'Budget');
-  const fullYear = selectFacts(dataset.facts, { ...filters, toMonth: 12 });
+    budget = summarize(facts, comparison);
+  const fullYear = selectFacts(dataset.facts, {
+    ...filters,
+    fromMonth: 1,
+    toMonth: 12,
+  });
   // Actual takes precedence only for the same leaf coordinate. A partial
   // Actual month must not suppress the other entities/accounts' Forecasts.
   const coordinate = (f: Fact) =>
@@ -96,7 +105,7 @@ export function buildDashboard(
     if (!expected.size || outlook.size < expected.size)
       coverage.missingOutlookPeriods.push(period);
     const a = summarize(rows, 'Actual'),
-      b = summarize(rows, 'Budget'),
+      b = summarize(rows, comparison),
       r = summarize(outlookRows, 'Forecast');
     return {
       month: new Date(2026, i, 1).toLocaleString('en', { month: 'short' }),
@@ -104,6 +113,11 @@ export function buildDashboard(
       budget: b.revenue,
       forecast: r.revenue,
       ebitda: hasActual ? a.ebitda : null,
+      budgetEbitda: b.ebitda,
+      forecastEbitda: r.ebitda,
+      fte: hasActual ? a.fte : null,
+      budgetFte: b.fte,
+      forecastFte: r.fte,
     };
   });
   const products = [
@@ -115,7 +129,7 @@ export function buildDashboard(
     return {
       name,
       value: summarize(s, 'Actual').revenue,
-      budget: summarize(s, 'Budget').revenue,
+      budget: summarize(s, comparison).revenue,
     };
   });
   const entities = ENTITIES.filter(
@@ -126,7 +140,7 @@ export function buildDashboard(
     return {
       name,
       actual: a.revenue,
-      budget: summarize(s, 'Budget').revenue,
+      budget: summarize(s, comparison).revenue,
       ebitda: a.ebitda,
       fte: a.fte,
     };
@@ -134,7 +148,7 @@ export function buildDashboard(
   const departments = DEPARTMENTS.map((name) => {
     const rows = facts.filter((f) => f.department === name),
       a = summarize(rows, 'Actual'),
-      b = summarize(rows, 'Budget');
+      b = summarize(rows, comparison);
     return {
       name,
       fte: a.fte,
@@ -183,6 +197,8 @@ export function scenario(
   salaryPercent: number,
   additionalFte: number
 ) {
+  if (base.fte + additionalFte < 0)
+    throw new Error('Additional FTE cannot reduce workforce below zero.');
   const revenue = base.revenue * (1 + revenuePercent / 100);
   const costPerFte = base.fte ? base.personnel / base.fte : 0;
   const personnel =

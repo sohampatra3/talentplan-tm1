@@ -3,12 +3,32 @@ import { generateSynthetic } from './synthetic';
 import { readTm1, Tm1Error } from './tm1';
 import { factSchema } from './validation';
 import type { Dataset, Fact } from './types';
-export async function getDataset(): Promise<Dataset> {
+import { loadConnection, readProfileRest } from './connections';
+export async function getDataset(session?: string): Promise<Dataset> {
   const checkedAt = new Date().toISOString();
   let tm1: 'disconnected' | 'unreachable' | 'error' = 'disconnected',
     reason = '';
   try {
-    const facts = await readTm1();
+    const profile = session
+      ? await loadConnection(session).catch(() => null)
+      : null;
+    if (profile?.activeSource === 'neon')
+      throw new Tm1Error(
+        'disconnected',
+        'Synthetic data is selected in Connections.'
+      );
+    let facts: Fact[];
+    if (profile?.activeSource === 'rest') {
+      try {
+        facts = await readProfileRest(profile);
+      } catch (error) {
+        if (error instanceof Tm1Error) throw error;
+        throw new Tm1Error(
+          'unreachable',
+          'The configured TM1 REST endpoint could not be reached or authenticated. Check the connection settings.'
+        );
+      }
+    } else facts = await readTm1();
     let databaseConnected = false;
     try {
       await getDb().query('SELECT 1');
