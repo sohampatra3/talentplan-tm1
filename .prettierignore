@@ -1,0 +1,8 @@
+node_modules
+.next
+.vercel
+output
+tmp
+package-lock.json
+IMPLEMENTATION_PLAN.md
+COST_FEASIBILITY.md

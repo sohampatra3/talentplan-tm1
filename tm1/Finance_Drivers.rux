@@ -1,0 +1,35 @@
+# Template for Finance_Drivers(Period, Entity, Version, Finance_Measure).
+# Review and validate on licensed IBM Planning Analytics before execution.
+# Actual inputs are loaded. Rules apply to Budget and Forecast leaves.
+SKIPCHECK;
+
+[{'Budget', 'Forecast'}, 'Revenue'] = N:
+  ['Listing_Volume'] * ['Net_Listing_Price']
+  + ['Active_Subscriptions'] * ['Monthly_Subscription_Price']
+  + ['Talent_Services_Revenue'];
+
+[{'Budget', 'Forecast'}, 'Personnel'] = N:
+  ['Average_FTE'] * ['Annual_Salary'] / 12
+  * (1 + ['Employer_Oncost_Rate']);
+
+['EBITDA'] = N:
+  ['Revenue'] - ['Personnel'] - ['Marketing']
+  - ['Technology'] - ['General_Admin'];
+
+# Leaf margin is a ratio. Consolidated margin needs a separate C: ratio rule
+# consistent with the implemented hierarchy, never a sum of percentages.
+['EBITDA_Margin'] = N: IF(['Revenue'] = 0, 0, ['EBITDA'] / ['Revenue']);
+
+FEEDERS;
+# Examples intentionally feed income AND expenses because EBITDA can be
+# negative when income is zero. Tune and validate against your real sparsity.
+[{'Budget', 'Forecast'}, 'Listing_Volume'] => ['Revenue'];
+[{'Budget', 'Forecast'}, 'Active_Subscriptions'] => ['Revenue'];
+[{'Budget', 'Forecast'}, 'Talent_Services_Revenue'] => ['Revenue'];
+[{'Budget', 'Forecast'}, 'Average_FTE'] => ['Personnel'];
+['Revenue'] => ['EBITDA'];
+['Personnel'] => ['EBITDA'];
+['Marketing'] => ['EBITDA'];
+['Technology'] => ['EBITDA'];
+['General_Admin'] => ['EBITDA'];
+['EBITDA'] => ['EBITDA_Margin'];

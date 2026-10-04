@@ -1,0 +1,14 @@
+node_modules/
+.next/
+.vercel/
+.neon
+.env*
+!.env.example
+*.tsbuildinfo
+output/
+tmp/
+test-results/
+playwright-report/
+.DS_Store
+IMPLEMENTATION_PLAN.md
+COST_FEASIBILITY.md

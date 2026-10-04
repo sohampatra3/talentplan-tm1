@@ -1,0 +1,110 @@
+import { NextRequest, NextResponse } from 'next/server';
+import ExcelJS from 'exceljs';
+import { getDataset } from '@/lib/data-source';
+import { parseFilters } from '@/lib/validation';
+import { selectFacts, buildDashboard } from '@/lib/finance';
+import { makeCsv, factColumns, exportRows } from '@/lib/export';
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export async function GET(request: NextRequest) {
+  try {
+    const filters = parseFilters(request.url),
+      format = request.nextUrl.searchParams.get('format') || 'xlsx';
+    if (!['csv', 'xlsx'].includes(format))
+      return NextResponse.json(
+        { error: 'Choose csv or xlsx.' },
+        { status: 400 }
+      );
+    const dataset = await getDataset();
+    const facts =
+      request.nextUrl.searchParams.get('scope') === 'all'
+        ? dataset.facts
+        : selectFacts(dataset.facts, filters);
+    const filename = `talentplan-${dataset.status.mode}-${request.nextUrl.searchParams.get('scope') === 'all' ? 'all-data' : filters.year}-${new Date().toISOString().slice(0, 10)}.${format}`;
+    const headers = {
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'no-store',
+    };
+    if (format === 'csv')
+      return new NextResponse(makeCsv(facts, dataset.status), {
+        headers: { ...headers, 'Content-Type': 'text/csv; charset=utf-8' },
+      });
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'TalentPlan';
+    workbook.created = new Date();
+    const info = workbook.addWorksheet('Read me');
+    info.columns = [{ width: 32 }, { width: 100 }];
+    info.addRows([
+      [
+        'TalentPlan finance export',
+        'Independent TM1 interview proof of concept',
+      ],
+      ['Data source', dataset.status.source],
+      ['Mode', dataset.status.mode],
+      ['TM1 status', dataset.status.tm1],
+      ['Connection details', dataset.status.reason],
+      ['Checked at (UTC)', dataset.status.checkedAt],
+      ['Exported rows', facts.length],
+      [
+        'Reporting currency',
+        'EUR; illustrative GBP/EUR conversion is embedded in demo costs',
+      ],
+      [
+        'Actual cutover',
+        'Synthetic Actuals end September 2026. No future actuals.',
+      ],
+      [
+        'Synthetic disclosure',
+        'Fictional recruitment marketplace. No StepStone actuals or employee records.',
+      ],
+      ['FTE aggregation', 'Average monthly FTE, never a sum across months.'],
+      [
+        'Cost convention',
+        'Costs stored as positive values; EBITDA = revenue minus operating expenses.',
+      ],
+      ['Forecast', 'Closed actual months plus forecast for remaining months.'],
+      [
+        'Scope',
+        request.nextUrl.searchParams.get('scope') === 'all'
+          ? 'All available years, entities and versions'
+          : JSON.stringify(filters),
+      ],
+    ]);
+    const summary = workbook.addWorksheet('Dashboard summary');
+    summary.columns = [{ width: 32 }, { width: 24 }, { width: 24 }];
+    summary.addRow(['Selected dashboard slice', JSON.stringify(filters)]);
+    summary.addRow(['Account', 'Actual EUR', 'Budget EUR']);
+    for (const v of buildDashboard(dataset, filters).variance)
+      summary.addRow([v.account, v.actual, v.budget]);
+    const sheet = workbook.addWorksheet('Finance facts');
+    sheet.columns = factColumns.map((h, i) => ({
+      header: h,
+      key: h,
+      width: [15, 24, 30, 28, 32, 15, 20, 12, 15, 20][i],
+    }));
+    sheet.addRows(exportRows(facts, dataset.status));
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    sheet.autoFilter = { from: 'A1', to: 'J1' };
+    sheet.getColumn(7).numFmt = '#,##0.00;[Red](#,##0.00)';
+    for (const ws of workbook.worksheets) {
+      ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      ws.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF172F29' },
+      };
+    }
+    return new NextResponse(new Uint8Array(await workbook.xlsx.writeBuffer()), {
+      headers: {
+        ...headers,
+        'Content-Type':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      },
+    });
+  } catch {
+    return NextResponse.json(
+      { error: 'Could not generate the export.' },
+      { status: 500 }
+    );
+  }
+}

@@ -1,0 +1,15 @@
+-- Initial validation query. Template: adapt to your actual TM1 hierarchy names.
+-- NON EMPTY must exclude missing future Actuals; zero-filled future periods
+-- must be filtered using a closed-period subset before extending the view.
+SELECT
+  { [Measure].[Measure].[Amount_EUR] } ON 0,
+  NON EMPTY
+  { [Period].[Period].[2026-09] }
+  * { [Entity].[Entity].[Germany] }
+  * { [Department].[Department].[Commercial] }
+  * { [Product].[Product].[Job advertising] }
+  * { [Account].[Account].[Revenue] }
+  * { [Version].[Version].[Actual],
+      [Version].[Version].[Budget],
+      [Version].[Version].[Forecast] } ON 1
+FROM [Finance_Plan]

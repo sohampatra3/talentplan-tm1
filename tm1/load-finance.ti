@@ -1,0 +1,48 @@
+# TurboIntegrator SOURCE TEMPLATE, not a directly importable .pro file.
+# Configure the CSV datasource and source variables in the TM1 editor.
+# Required source variables: vPeriod,vEntity,vDepartment,vProduct,vAccount,
+# vVersion,nAmount. Required parameters: pCube,pBatchId,pExpectedRows.
+# Add project-specific source totals, exception output and control-cube logging.
+
+# PROLOG TAB
+nLoaded = 0;
+nRejected = 0;
+nRevenueControl = 0;
+nOpexControl = 0;
+# Acquire the approved load window / version ownership before loading.
+# Perform a separate validation pass against staging before publishing.
+
+# DATA TAB
+IF(DIMIX('Period', vPeriod) = 0
+  % DIMIX('Entity', vEntity) = 0
+  % DIMIX('Department', vDepartment) = 0
+  % DIMIX('Product', vProduct) = 0
+  % DIMIX('Account', vAccount) = 0
+  % DIMIX('Version', vVersion) = 0);
+  nRejected = nRejected + 1;
+  ItemReject('Unknown canonical dimension member');
+ENDIF;
+
+# Leaf checks, duplicate coordinate checks and numeric validation must be
+# configured before publication. Do not incrementally add rerun duplicates.
+CellPutN(nAmount, pCube, vPeriod, vEntity, vDepartment,
+  vProduct, vAccount, vVersion, 'Amount_EUR');
+nLoaded = nLoaded + 1;
+IF(vAccount @= 'Revenue');
+  nRevenueControl = nRevenueControl + nAmount;
+ENDIF;
+IF(vAccount @= 'Personnel' % vAccount @= 'Marketing'
+  % vAccount @= 'Technology' % vAccount @= 'General & Administrative');
+  nOpexControl = nOpexControl + nAmount;
+ENDIF;
+
+# EPILOG TAB
+IF(nRejected > 0 % nLoaded <> pExpectedRows);
+  # A completed load is not automatically a publishable load.
+  # Record failure in Load_Control and keep the prior reporting snapshot.
+  ProcessError;
+ENDIF;
+# Reconcile Revenue/Opex control totals against the approved staging batch.
+# Record loaded count, rejects, control totals and publish-ready state.
+# A production implementation needs a tested staging/publication strategy;
+# ProcessError alone is not an assumed transaction rollback mechanism.
